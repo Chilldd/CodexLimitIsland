@@ -5,8 +5,9 @@ use tauri::Emitter;
 
 static REGISTRY: OnceLock<Mutex<SessionRegistry>> = OnceLock::new();
 const STALE_AFTER_MS: u64 = 10 * 60 * 1000;
+const ACTIVE_AFTER_MS: u64 = 2 * 60 * 60 * 1000;
 const COMPLETED_AFTER_MS: u64 = 8_000;
-const MAX_HOOK_BYTES: u64 = 1024 * 1024;
+pub const MAX_HOOK_BYTES: u64 = 1024 * 1024;
 const HOOK_PORT: u16 = 17321;
 const MAX_HEADER_BYTES: usize = 16 * 1024;
 
@@ -22,6 +23,10 @@ pub struct Session {
     pub last_activity_at: u64,
     pub completed_at: Option<u64>,
     pub model: Option<String>,
+    #[serde(skip_serializing)]
+    pub current_turn_id: Option<String>,
+    #[serde(skip_serializing)]
+    pub root_state: String,
     pub agents: Vec<Agent>,
 }
 
@@ -41,6 +46,7 @@ struct HookEvent {
     observed_at: u64,
     model: Option<String>,
     agent_id: Option<String>,
+    turn_id: Option<String>,
     tool_name: Option<String>,
     tool_use_id: Option<String>,
 }
@@ -48,7 +54,7 @@ struct HookEvent {
 #[derive(Default)]
 struct SessionRegistry { sessions: HashMap<String, Session>, active_tools: HashMap<String, Vec<ActiveTool>>, updated_at: u64 }
 
-struct ActiveTool { id: String, name: String, state: &'static str, started_at: u64 }
+struct ActiveTool { id: String, name: String, state: &'static str, started_at: u64, agent_id: Option<String> }
 
 fn now_ms() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64 }
 fn field<'a>(value: &'a Value, name: &str) -> Option<&'a str> { value.get(name).and_then(Value::as_str) }
@@ -64,6 +70,7 @@ fn normalize_hook(value: &Value) -> Result<HookEvent, String> {
         observed_at: now_ms(),
         model: field(value, "model").map(str::to_string),
         agent_id: field(value, "agent_id").map(str::to_string),
+        turn_id: field(value, "turn_id").map(str::to_string),
         tool_name: field(value, "tool_name").map(str::to_string),
         tool_use_id: field(value, "tool_use_id").map(str::to_string),
     })
@@ -102,6 +109,7 @@ fn receive_connection(mut stream: TcpStream, app: &tauri::AppHandle) -> Result<(
             return Err(error);
         }
     };
+    let refresh_usage = event.hook_event_name == "SessionEnd" || (event.hook_event_name == "Stop" && event.agent_id.is_none());
     let snapshot = {
         let mutex = REGISTRY.get_or_init(|| Mutex::new(SessionRegistry::default()));
         let mut registry = mutex.lock().map_err(|_| "会话状态不可用".to_string())?;
@@ -110,6 +118,7 @@ fn receive_connection(mut stream: TcpStream, app: &tauri::AppHandle) -> Result<(
         snapshot(&mut registry)
     };
     app.emit("activity-updated", snapshot).map_err(|error| format!("通知界面失败：{error}"))?;
+    if refresh_usage { crate::request_usage_refresh(); }
     stream.write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").map_err(|error| format!("返回 Hook 响应失败：{error}"))
 }
 
@@ -150,68 +159,94 @@ fn tool_state(name: &str) -> &'static str {
     else if name.starts_with("mcp__") { "connecting" }
     else { "working" }
 }
+fn recompute_session_state(session: &mut Session, tools: &[ActiveTool]) {
+    if session.completed_at.is_some() { session.state = "completed".into(); session.current_command = None; return; }
+    let root = tools.iter().filter(|tool| tool.agent_id.is_none()).max_by_key(|tool| tool.started_at);
+    let other = tools.iter().filter(|tool| tool.agent_id.is_some()).max_by_key(|tool| tool.started_at);
+    session.current_command = root.filter(|tool| tool.state == "running-command").map(|tool| tool.name.clone());
+    session.state = if session.root_state == "waiting" { "waiting" }
+        else if let Some(tool) = root { tool.state }
+        else if let Some(tool) = other { tool.state }
+        else if session.root_state == "composing" { "composing" }
+        else if session.agents.iter().any(|agent| agent.state == "waiting") { "waiting" }
+        else if session.started_at.is_some() { "thinking" }
+        else { "idle" }.into();
+}
+fn update_agent(session: &mut Session, id: &str, state: &str, at: u64) {
+    if let Some(agent) = session.agents.iter_mut().find(|agent| agent.id == id) {
+        agent.state = state.into(); agent.last_activity_at = at;
+    } else {
+        session.agents.push(Agent { id: id.into(), state: state.into(), last_activity_at: at });
+    }
+}
 fn apply_event(registry: &mut SessionRegistry, event: HookEvent) {
     let tools = registry.active_tools.entry(event.session_id.clone()).or_default();
     let session = registry.sessions.entry(event.session_id.clone()).or_insert_with(|| Session {
         id: event.session_id.clone(), project: project_of(&event.cwd), cwd: Some(event.cwd.clone()), state: "idle".into(),
         current_command: None, started_at: None, last_activity_at: event.observed_at, completed_at: None,
-        model: None, agents: Vec::new(),
+        model: None, current_turn_id: None, root_state: "thinking".into(), agents: Vec::new(),
     });
+    // 旧 Turn 的迟到事件不得改变当前 Turn；缺失 turn_id 的旧版 Hook 维持兼容。
+    if event.agent_id.is_none() && event.hook_event_name != "UserPromptSubmit" && event.hook_event_name != "SessionStart" && event.hook_event_name != "SessionEnd" {
+        if let (Some(current), Some(incoming)) = (&session.current_turn_id, &event.turn_id) {
+            if current != incoming { return; }
+        }
+    }
     if !event.cwd.is_empty() { session.cwd = Some(event.cwd.clone()); session.project = project_of(&event.cwd); }
     if event.model.is_some() { session.model = event.model; }
     session.last_activity_at = event.observed_at;
+    let agent_id = event.agent_id.as_deref();
     match event.hook_event_name.as_str() {
         "SessionStart" => {},
-        "SessionEnd" => { tools.clear(); session.state = "completed".into(); session.completed_at = Some(event.observed_at); session.current_command = None; },
-        "UserPromptSubmit" => { tools.clear(); session.agents.retain(|agent| agent.state != "completed"); session.state = "thinking".into(); session.started_at = Some(event.observed_at); session.completed_at = None; session.current_command = None; },
-        "PreCompact" => { if session.started_at.is_some() && session.completed_at.is_none() { session.state = "composing".into(); } },
-        "PostCompact" => { if session.started_at.is_some() && session.completed_at.is_none() { session.state = "thinking".into(); } },
-        "PreToolUse" => {
-            if session.started_at.is_some() && session.completed_at.is_none() {
-                let name = event.tool_name.unwrap_or_default();
-                let id = event.tool_use_id.unwrap_or_else(|| format!("legacy:{name}"));
-                tools.retain(|tool| tool.id != id);
-                tools.push(ActiveTool { id, state: tool_state(&name), name, started_at: event.observed_at });
-                let current = tools.last().expect("刚添加的工具必须存在");
-                session.state = current.state.into();
-                session.current_command = (current.state == "running-command").then(|| current.name.clone());
+        "SessionEnd" => { tools.clear(); session.completed_at = Some(event.observed_at); },
+        "UserPromptSubmit" if agent_id.is_none() => {
+            tools.clear(); session.agents.retain(|agent| agent.state != "completed");
+            session.current_turn_id = event.turn_id;
+            session.root_state = "thinking".into(); session.started_at = Some(event.observed_at); session.completed_at = None;
+        },
+        "UserPromptSubmit" => { update_agent(session, agent_id.unwrap(), "thinking", event.observed_at); },
+        "PreToolUse" | "PostToolUse" | "PermissionRequest" | "PreCompact" | "PostCompact" | "SubagentStart" => {
+            if session.started_at.is_none() || session.completed_at.is_some() {
+                session.started_at = Some(event.observed_at); session.completed_at = None;
+                session.current_turn_id = event.turn_id.clone(); session.root_state = "thinking".into();
+            }
+            match event.hook_event_name.as_str() {
+                "PreToolUse" => {
+                    let name = event.tool_name.unwrap_or_default();
+                    let id = event.tool_use_id.unwrap_or_else(|| format!("legacy:{name}"));
+                    tools.retain(|tool| tool.id != id || tool.agent_id.as_deref() != agent_id);
+                    tools.push(ActiveTool { id, state: tool_state(&name), name, started_at: event.observed_at, agent_id: event.agent_id.clone() });
+                    if let Some(id) = agent_id { update_agent(session, id, "working", event.observed_at); }
+                },
+                "PostToolUse" => {
+                    if let Some(id) = event.tool_use_id {
+                        tools.retain(|tool| tool.id != id || tool.agent_id.as_deref() != agent_id);
+                    } else if let Some(position) = tools.iter().rposition(|tool| tool.agent_id.as_deref() == agent_id && event.tool_name.as_deref().is_none_or(|name| tool.name == name)) { tools.remove(position); }
+                    if let Some(id) = agent_id { update_agent(session, id, "thinking", event.observed_at); }
+                    else if session.root_state == "waiting" { session.root_state = "thinking".into(); }
+                },
+                "PermissionRequest" => { if let Some(id) = agent_id { update_agent(session, id, "waiting", event.observed_at); } else { session.root_state = "waiting".into(); } },
+                "PreCompact" => { if let Some(id) = agent_id { update_agent(session, id, "composing", event.observed_at); } else { session.root_state = "composing".into(); } },
+                "PostCompact" => { if let Some(id) = agent_id { update_agent(session, id, "thinking", event.observed_at); } else { session.root_state = "thinking".into(); } },
+                "SubagentStart" => { if let Some(id) = agent_id { update_agent(session, id, "thinking", event.observed_at); } },
+                _ => {},
             }
         },
-        "PostToolUse" => {
-            if session.started_at.is_some() && session.completed_at.is_none() {
-                if let Some(id) = event.tool_use_id {
-                    tools.retain(|tool| tool.id != id);
-                } else if let Some(position) = tools.iter().rposition(|tool| event.tool_name.as_deref().is_none_or(|name| tool.name == name)) {
-                    tools.remove(position);
-                }
-                if session.state != "waiting" || tools.is_empty() {
-                    let current = tools.iter().max_by_key(|tool| tool.started_at);
-                    session.state = current.map_or("thinking", |tool| tool.state).into();
-                    session.current_command = current.and_then(|tool| (tool.state == "running-command").then(|| tool.name.clone()));
-                }
-            }
-        },
-        "PermissionRequest" => { if session.started_at.is_some() && session.completed_at.is_none() { session.state = "waiting".into(); } },
-        "SubagentStart" => {
-            if let Some(id) = event.agent_id {
-                if let Some(agent) = session.agents.iter_mut().find(|agent| agent.id == id) { agent.state = "thinking".into(); agent.last_activity_at = event.observed_at; }
-                else { session.agents.push(Agent { id, state: "thinking".into(), last_activity_at: event.observed_at }); }
-            }
-        },
-        "SubagentStop" => { if let Some(id) = event.agent_id { if let Some(agent) = session.agents.iter_mut().find(|agent| agent.id == id) { agent.state = "completed".into(); agent.last_activity_at = event.observed_at; } } },
-        "Stop" => { tools.clear(); session.state = "completed".into(); session.completed_at = Some(event.observed_at); session.current_command = None; },
-        "Interrupt" => { tools.clear(); session.state = "completed".into(); session.completed_at = Some(event.observed_at); session.current_command = None; },
+        "SubagentStop" => { if let Some(id) = agent_id { update_agent(session, id, "completed", event.observed_at); tools.retain(|tool| tool.agent_id.as_deref() != Some(id)); } },
+        "Stop" | "Interrupt" if agent_id.is_some() => { let id = agent_id.unwrap(); update_agent(session, id, "completed", event.observed_at); tools.retain(|tool| tool.agent_id.as_deref() != Some(id)); },
+        "Stop" | "Interrupt" => { tools.clear(); session.completed_at = Some(event.observed_at); },
         _ => {},
     }
+    recompute_session_state(session, tools);
 }
 
 fn cleanup_registry(registry: &mut SessionRegistry, now: u64) -> bool {
     let before = registry.sessions.len();
-    registry.sessions.retain(|_, session| {
+    registry.sessions.retain(|id, session| {
         if session.state == "completed" {
             now.saturating_sub(session.completed_at.unwrap_or(session.last_activity_at)) <= COMPLETED_AFTER_MS
-        } else if session.state == "waiting" {
-            true
+        } else if session.state == "waiting" || registry.active_tools.get(id).is_some_and(|tools| !tools.is_empty()) {
+            now.saturating_sub(session.last_activity_at) <= ACTIVE_AFTER_MS
         } else {
             now.saturating_sub(session.last_activity_at) <= STALE_AFTER_MS
         }
@@ -245,7 +280,7 @@ mod tests {
     #[test]
     fn tracks_independent_sessions_and_agents() {
         let mut registry = SessionRegistry::default();
-        let event = |name: &str, id: &str, agent: Option<&str>, at| HookEvent { hook_event_name: name.into(), session_id: id.into(), cwd: "D:/Demo".into(), observed_at: at, model: None, agent_id: agent.map(str::to_string), tool_name: None, tool_use_id: None };
+        let event = |name: &str, id: &str, agent: Option<&str>, at| HookEvent { hook_event_name: name.into(), session_id: id.into(), cwd: "D:/Demo".into(), observed_at: at, model: None, agent_id: agent.map(str::to_string), turn_id: None, tool_name: None, tool_use_id: None };
         apply_event(&mut registry, event("UserPromptSubmit", "a", None, 1));
         apply_event(&mut registry, event("UserPromptSubmit", "b", None, 2));
         apply_event(&mut registry, event("SubagentStart", "a", Some("worker"), 3));
@@ -274,7 +309,7 @@ mod tests {
         let mut registry = SessionRegistry::default();
         let event = |hook: &str, tool: Option<&str>, call: Option<&str>, at| HookEvent {
             hook_event_name: hook.into(), session_id: "s1".into(), cwd: "D:/Demo".into(), observed_at: at,
-            model: None, agent_id: None,
+            model: None, agent_id: None, turn_id: None,
             tool_name: tool.map(str::to_string), tool_use_id: call.map(str::to_string),
         };
         apply_event(&mut registry, event("UserPromptSubmit", None, None, 1));
@@ -287,7 +322,7 @@ mod tests {
     }
     fn event(name: &str, id: &str, at: u64) -> HookEvent {
         HookEvent { hook_event_name: name.into(), session_id: id.into(), cwd: "D:/Demo".into(), observed_at: at,
-            model: None, agent_id: None, tool_name: None, tool_use_id: None }
+            model: None, agent_id: None, turn_id: None, tool_name: None, tool_use_id: None }
     }
     #[test]
     fn session_end_is_removed_after_display_period() {
@@ -308,9 +343,10 @@ mod tests {
         tool.tool_use_id = Some("call".into());
         apply_event(&mut registry, tool);
         assert_eq!(registry.active_tools["a"].len(), 1);
-        assert!(cleanup_registry(&mut registry, 3 + STALE_AFTER_MS));
+        assert!(!cleanup_registry(&mut registry, 3 + STALE_AFTER_MS));
+        assert_eq!(registry.active_tools["a"].len(), 1);
+        assert!(cleanup_registry(&mut registry, 3 + ACTIVE_AFTER_MS));
         assert!(registry.sessions.is_empty());
-        assert!(registry.active_tools.is_empty());
     }
     #[test]
     fn waiting_session_survives_stale_cleanup() {
@@ -347,5 +383,48 @@ mod tests {
         for name in ["PreCompact", "PostCompact"] {
             assert!(normalize_hook(&json!({"hook_event_name": name, "session_id": "a"})).is_ok());
         }
+    }
+    #[test]
+    fn late_attach_recovers_tool_and_permission() {
+        let mut registry = SessionRegistry::default();
+        let mut bash = event("PreToolUse", "tool", 10);
+        bash.tool_name = Some("Bash".into());
+        apply_event(&mut registry, bash);
+        assert_eq!(registry.sessions["tool"].started_at, Some(10));
+        assert_eq!(registry.sessions["tool"].state, "running-command");
+        assert_eq!(registry.active_tools["tool"].len(), 1);
+        apply_event(&mut registry, event("PermissionRequest", "permission", 11));
+        assert_eq!(registry.sessions["permission"].state, "waiting");
+    }
+    #[test]
+    fn subagent_events_preserve_root_tool() {
+        let mut registry = SessionRegistry::default();
+        apply_event(&mut registry, event("UserPromptSubmit", "a", 1));
+        let mut bash = event("PreToolUse", "a", 2);
+        bash.tool_name = Some("Bash".into());
+        apply_event(&mut registry, bash);
+        for name in ["SubagentStart", "UserPromptSubmit", "PreCompact", "PostCompact"] {
+            let mut sub = event(name, "a", 3);
+            sub.agent_id = Some("agent-1".into());
+            apply_event(&mut registry, sub);
+            assert_eq!(registry.sessions["a"].state, "running-command");
+            assert_eq!(registry.sessions["a"].started_at, Some(1));
+            assert_eq!(registry.sessions["a"].current_command.as_deref(), Some("Bash"));
+        }
+    }
+    #[test]
+    fn previous_turn_event_does_not_change_new_turn() {
+        let mut registry = SessionRegistry::default();
+        let mut first = event("UserPromptSubmit", "a", 1);
+        first.turn_id = Some("old".into());
+        apply_event(&mut registry, first);
+        let mut second = event("UserPromptSubmit", "a", 2);
+        second.turn_id = Some("new".into());
+        apply_event(&mut registry, second);
+        let mut late = event("PreToolUse", "a", 3);
+        late.turn_id = Some("old".into()); late.tool_name = Some("Bash".into());
+        apply_event(&mut registry, late);
+        assert_eq!(registry.sessions["a"].state, "thinking");
+        assert_eq!(registry.sessions["a"].current_turn_id.as_deref(), Some("new"));
     }
 }

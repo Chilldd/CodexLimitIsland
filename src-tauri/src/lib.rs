@@ -1,4 +1,6 @@
 mod activity;
+mod hook_sender;
+pub fn run_hook_sender() { hook_sender::run(); }
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::{
@@ -16,6 +18,7 @@ use tauri::menu::{Menu, MenuItem};
 
 static SERVER: OnceLock<Mutex<Option<AppServer>>> = OnceLock::new();
 static USAGE_EVENTS: OnceLock<mpsc::Sender<()>> = OnceLock::new();
+pub(crate) fn request_usage_refresh() { if let Some(sender) = USAGE_EVENTS.get() { let _ = sender.send(()); } }
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[link(name = "gdi32")]
@@ -192,12 +195,15 @@ fn start_usage_listener(app: tauri::AppHandle) {
     let (sender, notifications) = mpsc::channel();
     if USAGE_EVENTS.set(sender).is_err() { return; }
     std::thread::spawn(move || loop {
-        let notified = match notifications.recv_timeout(Duration::from_secs(20 * 60)) {
+        let notified = match notifications.recv_timeout(Duration::from_secs(5 * 60)) {
             Ok(()) => true,
             Err(mpsc::RecvTimeoutError::Timeout) => false,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         };
-        if notified { while notifications.try_recv().is_ok() {} }
+        if notified {
+            std::thread::sleep(Duration::from_secs(3));
+            while notifications.try_recv().is_ok() {}
+        }
         match read_limits_blocking() {
             Ok(snapshot) => {
                 if let Err(error) = app.emit("usage-updated", snapshot) { eprintln!("通知额度更新失败：{error}"); }
@@ -240,6 +246,7 @@ fn set_window_hit_region(window: tauri::WebviewWindow, width: f64, height: f64) 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|_, _, _| {}))
         .invoke_handler(tauri::generate_handler![read_limits, activity::read_activity, set_window_hit_region])
         // 左键切换浮窗，右键由托盘菜单提供退出入口。
         .on_tray_icon_event(|app, event| {
