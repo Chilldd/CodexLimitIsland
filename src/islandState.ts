@@ -20,7 +20,7 @@ export function sessionLabel(session: Session): string {
     case "thinking": return "Thinking…"; case "working": return "Working…"; case "searching": return "Searching codebase…";
     case "editing": return session.currentFile ? `Editing ${session.currentFile.split(/[\\/]/).pop()}` : "Editing files…";
     case "running-command": return session.currentCommand ? `Running ${session.currentCommand.trim().split(/\s+/).slice(0, 2).join(" ")}` : "Running command…";
-    case "connecting": return "Connecting…"; case "composing": return "Writing…"; case "waiting": return "Needs approval";
+    case "connecting": return "Connecting…"; case "composing": return "Writing…"; case "waiting": return "审批处理中";
     case "completed": return "Completed"; case "error": return "Failed"; case "rate-limited": return "Limit reached"; default: return "";
   }
 }
@@ -34,7 +34,7 @@ export function selectIsland(sessions: Session[], usage: UsageSnapshot | null, n
   const base = { primary, sessions: top, activeCount: working.length, waitingCount, errorCount, rateLimitedCount };
   if (rateLimitedCount || usage?.fiveHour?.remainingPercent === 0 || usage?.weekly?.remainingPercent === 0) return { ...base, mode: "attention", label: usage?.fiveHour?.remainingPercent === 0 ? "5H limit reached" : usage?.weekly?.remainingPercent === 0 ? "WEEK limit reached" : `${rateLimitedCount} session${rateLimitedCount === 1 ? "" : "s"} hit a limit`, orb: ORB_CONFIG["rate-limited"] };
   if (errorCount) return { ...base, mode: "attention", label: `${errorCount} session${errorCount === 1 ? "" : "s"} failed`, orb: ORB_CONFIG.error };
-  if (waitingCount) return { ...base, mode: "attention", label: `${waitingCount} session${waitingCount === 1 ? " needs" : "s need"} you`, orb: ORB_CONFIG.waiting };
+  if (waitingCount) return { ...base, mode: "attention", label: `${waitingCount} 个任务正在审批`, orb: ORB_CONFIG.waiting };
   if (working.length > 1) return { ...base, mode: "multi-session", label: `${working.length} sessions working`, orb: { state: "weaving", speed: 1 } };
   if (working.length === 1) {
     const activeAgents = working[0].agents.filter(a => a.state !== "completed" && a.state !== "idle").length;
