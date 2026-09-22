@@ -48,7 +48,7 @@ function App() {
   const mode = expanded ? "expanded" : view.mode;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const expandedHeight = Math.min(420, view.sessions.length > 1 ? 164 + view.sessions.length * 48 : 154);
-  const compactWidth = view.mode === "minimal" ? 134 : 272;
+  const compactWidth = view.mode === "minimal" ? 120 : 242;
   const compactHeight = view.mode === "minimal" ? 40 : 42;
   useEffect(() => { if (expanded) void appWindow.setSize(new LogicalSize(390, expandedHeight + 4)).then(() => setHitRegion(384, expandedHeight + 4)).catch(error => console.error("窗口尺寸调整失败", error)); }, [expandedHeight]);
   useEffect(() => {
