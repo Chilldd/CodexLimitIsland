@@ -11,9 +11,11 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::Manager;
+use tauri::Emitter;
 use tauri::menu::{Menu, MenuItem};
 
 static SERVER: OnceLock<Mutex<Option<AppServer>>> = OnceLock::new();
+static USAGE_EVENTS: OnceLock<mpsc::Sender<()>> = OnceLock::new();
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[link(name = "gdi32")]
@@ -30,14 +32,14 @@ unsafe extern "system" {
     fn set_window_rgn(hwnd: *mut std::ffi::c_void, region: *mut std::ffi::c_void, redraw: i32) -> i32;
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LimitWindow {
     remaining_percent: f64,
     resets_at: Option<i64>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct UsageSnapshot {
     five_hour: Option<LimitWindow>,
@@ -77,7 +79,13 @@ impl AppServer {
         std::thread::spawn(move || {
             for line in BufReader::new(stdout).lines() {
                 match line {
-                    Ok(line) => { if sender.send(line).is_err() { break; } }
+                    Ok(line) => {
+                        if let Ok(value) = serde_json::from_str::<Value>(&line) {
+                            if value.get("method").and_then(Value::as_str) == Some("account/rateLimits/updated") {
+                                if let Some(events) = USAGE_EVENTS.get() { let _ = events.send(()); }
+                            } else if value.get("id").is_some() && sender.send(line).is_err() { break; }
+                        }
+                    }
                     Err(_) => break,
                 }
             }
@@ -180,6 +188,27 @@ fn read_limits_blocking() -> Result<UsageSnapshot, String> {
     result
 }
 
+fn start_usage_listener(app: tauri::AppHandle) {
+    let (sender, notifications) = mpsc::channel();
+    if USAGE_EVENTS.set(sender).is_err() { return; }
+    std::thread::spawn(move || loop {
+        let notified = match notifications.recv_timeout(Duration::from_secs(20 * 60)) {
+            Ok(()) => true,
+            Err(mpsc::RecvTimeoutError::Timeout) => false,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        };
+        if notified { while notifications.try_recv().is_ok() {} }
+        match read_limits_blocking() {
+            Ok(snapshot) => {
+                if let Err(error) = app.emit("usage-updated", snapshot) { eprintln!("通知额度更新失败：{error}"); }
+            }
+            Err(error) => {
+                if let Err(emit_error) = app.emit("usage-error", error) { eprintln!("通知额度错误失败：{emit_error}"); }
+            }
+        }
+    });
+}
+
 #[tauri::command]
 async fn read_limits() -> Result<UsageSnapshot, String> {
     tauri::async_runtime::spawn_blocking(read_limits_blocking)
@@ -242,6 +271,7 @@ pub fn run() {
             let tray = app.tray_by_id("main").ok_or_else(|| io::Error::other("找不到托盘图标"))?;
             tray.set_menu(Some(menu))?;
             activity::start_listener(app.handle().clone()).map_err(std::io::Error::other)?;
+            start_usage_listener(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
                 if let Some(monitor) = window.primary_monitor()? {
                     let screen = monitor.size();

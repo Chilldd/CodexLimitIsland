@@ -5,6 +5,7 @@ use tauri::Emitter;
 
 static REGISTRY: OnceLock<Mutex<SessionRegistry>> = OnceLock::new();
 const STALE_AFTER_MS: u64 = 10 * 60 * 1000;
+const COMPLETED_AFTER_MS: u64 = 8_000;
 const MAX_HOOK_BYTES: u64 = 1024 * 1024;
 const HOOK_PORT: u16 = 17321;
 const MAX_HEADER_BYTES: usize = 16 * 1024;
@@ -13,18 +14,14 @@ const MAX_HEADER_BYTES: usize = 16 * 1024;
 #[serde(rename_all = "camelCase")]
 pub struct Session {
     pub id: String,
-    pub parent_session_id: Option<String>,
     pub project: Option<String>,
     pub cwd: Option<String>,
     pub state: String,
-    pub label: Option<String>,
-    pub current_file: Option<String>,
     pub current_command: Option<String>,
     pub started_at: Option<u64>,
     pub last_activity_at: u64,
     pub completed_at: Option<u64>,
     pub model: Option<String>,
-    pub reasoning_level: Option<String>,
     pub agents: Vec<Agent>,
 }
 
@@ -43,15 +40,13 @@ struct HookEvent {
     cwd: String,
     observed_at: u64,
     model: Option<String>,
-    turn_id: Option<String>,
     agent_id: Option<String>,
-    agent_type: Option<String>,
     tool_name: Option<String>,
     tool_use_id: Option<String>,
 }
 
 #[derive(Default)]
-struct SessionRegistry { sessions: HashMap<String, Session>, active_tools: HashMap<String, Vec<ActiveTool>> }
+struct SessionRegistry { sessions: HashMap<String, Session>, active_tools: HashMap<String, Vec<ActiveTool>>, updated_at: u64 }
 
 struct ActiveTool { id: String, name: String, state: &'static str, started_at: u64 }
 
@@ -61,16 +56,14 @@ fn project_of(cwd: &str) -> Option<String> { Path::new(cwd).file_name().map(|v| 
 fn hook_address() -> SocketAddrV4 { SocketAddrV4::new(Ipv4Addr::LOCALHOST, HOOK_PORT) }
 fn normalize_hook(value: &Value) -> Result<HookEvent, String> {
     let hook_event_name = field(value, "hook_event_name").ok_or("Hook 缺少事件名")?;
-    if !matches!(hook_event_name, "SessionStart" | "SessionEnd" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "SubagentStart" | "SubagentStop" | "PermissionRequest" | "Stop" | "Interrupt") { return Err("未知 Hook 事件".into()); }
+    if !matches!(hook_event_name, "SessionStart" | "SessionEnd" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "PreCompact" | "PostCompact" | "SubagentStart" | "SubagentStop" | "PermissionRequest" | "Stop" | "Interrupt") { return Err("未知 Hook 事件".into()); }
     Ok(HookEvent {
         hook_event_name: hook_event_name.into(),
         session_id: field(value, "session_id").ok_or("Hook 缺少会话 ID")?.into(),
         cwd: field(value, "cwd").unwrap_or("").into(),
         observed_at: now_ms(),
         model: field(value, "model").map(str::to_string),
-        turn_id: field(value, "turn_id").map(str::to_string),
         agent_id: field(value, "agent_id").map(str::to_string),
-        agent_type: field(value, "agent_type").map(str::to_string),
         tool_name: field(value, "tool_name").map(str::to_string),
         tool_use_id: field(value, "tool_use_id").map(str::to_string),
     })
@@ -113,7 +106,8 @@ fn receive_connection(mut stream: TcpStream, app: &tauri::AppHandle) -> Result<(
         let mutex = REGISTRY.get_or_init(|| Mutex::new(SessionRegistry::default()));
         let mut registry = mutex.lock().map_err(|_| "会话状态不可用".to_string())?;
         apply_event(&mut registry, event);
-        snapshot(&registry)
+        cleanup_registry(&mut registry, now_ms());
+        snapshot(&mut registry)
     };
     app.emit("activity-updated", snapshot).map_err(|error| format!("通知界面失败：{error}"))?;
     stream.write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").map_err(|error| format!("返回 Hook 响应失败：{error}"))
@@ -121,6 +115,7 @@ fn receive_connection(mut stream: TcpStream, app: &tauri::AppHandle) -> Result<(
 
 pub fn start_listener(app: tauri::AppHandle) -> Result<(), String> {
     let listener = TcpListener::bind(hook_address()).map_err(|error| format!("启动 Hook 监听失败（可能已有灵动岛实例）：{error}"))?;
+    let cleanup_app = app.clone();
     std::thread::spawn(move || {
         for connection in listener.incoming() {
             match connection {
@@ -132,6 +127,16 @@ pub fn start_listener(app: tauri::AppHandle) -> Result<(), String> {
                 }
                 Err(error) => eprintln!("Codex Limit Island: 接收 Hook 连接失败：{error}"),
             }
+        }
+    });
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(1));
+        let Some(mutex) = REGISTRY.get() else { continue };
+        let Ok(mut registry) = mutex.lock() else { continue };
+        if cleanup_registry(&mut registry, now_ms()) {
+            let next = snapshot(&mut registry);
+            drop(registry);
+            if let Err(error) = cleanup_app.emit("activity-updated", next) { eprintln!("通知界面失败：{error}"); }
         }
     });
     Ok(())
@@ -148,17 +153,19 @@ fn tool_state(name: &str) -> &'static str {
 fn apply_event(registry: &mut SessionRegistry, event: HookEvent) {
     let tools = registry.active_tools.entry(event.session_id.clone()).or_default();
     let session = registry.sessions.entry(event.session_id.clone()).or_insert_with(|| Session {
-        id: event.session_id.clone(), parent_session_id: None, project: project_of(&event.cwd), cwd: Some(event.cwd.clone()), state: "idle".into(), label: None,
-        current_file: None, current_command: None, started_at: None, last_activity_at: event.observed_at, completed_at: None,
-        model: None, reasoning_level: None, agents: Vec::new(),
+        id: event.session_id.clone(), project: project_of(&event.cwd), cwd: Some(event.cwd.clone()), state: "idle".into(),
+        current_command: None, started_at: None, last_activity_at: event.observed_at, completed_at: None,
+        model: None, agents: Vec::new(),
     });
     if !event.cwd.is_empty() { session.cwd = Some(event.cwd.clone()); session.project = project_of(&event.cwd); }
     if event.model.is_some() { session.model = event.model; }
     session.last_activity_at = event.observed_at;
     match event.hook_event_name.as_str() {
         "SessionStart" => {},
-        "SessionEnd" => { tools.clear(); session.state = "idle".into(); session.completed_at = Some(event.observed_at); },
-        "UserPromptSubmit" => { tools.clear(); session.state = "thinking".into(); session.started_at = Some(event.observed_at); session.completed_at = None; session.current_command = None; },
+        "SessionEnd" => { tools.clear(); session.state = "completed".into(); session.completed_at = Some(event.observed_at); session.current_command = None; },
+        "UserPromptSubmit" => { tools.clear(); session.agents.retain(|agent| agent.state != "completed"); session.state = "thinking".into(); session.started_at = Some(event.observed_at); session.completed_at = None; session.current_command = None; },
+        "PreCompact" => { if session.started_at.is_some() && session.completed_at.is_none() { session.state = "composing".into(); } },
+        "PostCompact" => { if session.started_at.is_some() && session.completed_at.is_none() { session.state = "thinking".into(); } },
         "PreToolUse" => {
             if session.started_at.is_some() && session.completed_at.is_none() {
                 let name = event.tool_name.unwrap_or_default();
@@ -198,21 +205,32 @@ fn apply_event(registry: &mut SessionRegistry, event: HookEvent) {
     }
 }
 
-fn snapshot(registry: &SessionRegistry) -> ActivitySnapshot {
-    let now = now_ms();
-    let sessions = registry.sessions.values().filter_map(|session| {
-        if session.state == "idle" { return None; }
-        if session.state == "completed" && now.saturating_sub(session.completed_at.unwrap_or(session.last_activity_at)) > 8_000 { return None; }
-        if session.state != "waiting" && session.state != "completed" && now.saturating_sub(session.last_activity_at) > STALE_AFTER_MS { return None; }
-        Some(session.clone())
-    }).collect();
-    ActivitySnapshot { sessions, updated_at: now }
+fn cleanup_registry(registry: &mut SessionRegistry, now: u64) -> bool {
+    let before = registry.sessions.len();
+    registry.sessions.retain(|_, session| {
+        if session.state == "completed" {
+            now.saturating_sub(session.completed_at.unwrap_or(session.last_activity_at)) <= COMPLETED_AFTER_MS
+        } else if session.state == "waiting" {
+            true
+        } else {
+            now.saturating_sub(session.last_activity_at) <= STALE_AFTER_MS
+        }
+    });
+    registry.active_tools.retain(|id, tools| registry.sessions.contains_key(id) && !tools.is_empty());
+    before != registry.sessions.len()
+}
+
+fn snapshot(registry: &mut SessionRegistry) -> ActivitySnapshot {
+    registry.updated_at = now_ms().max(registry.updated_at.saturating_add(1));
+    let sessions = registry.sessions.values().filter(|session| session.state != "idle").cloned().collect();
+    ActivitySnapshot { sessions, updated_at: registry.updated_at }
 }
 
 fn read_activity_snapshot() -> Result<ActivitySnapshot, String> {
     let mutex = REGISTRY.get_or_init(|| Mutex::new(SessionRegistry::default()));
-    let registry = mutex.lock().map_err(|_| "会话状态不可用".to_string())?;
-    Ok(snapshot(&registry))
+    let mut registry = mutex.lock().map_err(|_| "会话状态不可用".to_string())?;
+    cleanup_registry(&mut registry, now_ms());
+    Ok(snapshot(&mut registry))
 }
 
 #[tauri::command]
@@ -227,7 +245,7 @@ mod tests {
     #[test]
     fn tracks_independent_sessions_and_agents() {
         let mut registry = SessionRegistry::default();
-        let event = |name: &str, id: &str, agent: Option<&str>, at| HookEvent { hook_event_name: name.into(), session_id: id.into(), cwd: "D:/Demo".into(), observed_at: at, model: None, turn_id: None, agent_id: agent.map(str::to_string), agent_type: None, tool_name: None, tool_use_id: None };
+        let event = |name: &str, id: &str, agent: Option<&str>, at| HookEvent { hook_event_name: name.into(), session_id: id.into(), cwd: "D:/Demo".into(), observed_at: at, model: None, agent_id: agent.map(str::to_string), tool_name: None, tool_use_id: None };
         apply_event(&mut registry, event("UserPromptSubmit", "a", None, 1));
         apply_event(&mut registry, event("UserPromptSubmit", "b", None, 2));
         apply_event(&mut registry, event("SubagentStart", "a", Some("worker"), 3));
@@ -256,7 +274,7 @@ mod tests {
         let mut registry = SessionRegistry::default();
         let event = |hook: &str, tool: Option<&str>, call: Option<&str>, at| HookEvent {
             hook_event_name: hook.into(), session_id: "s1".into(), cwd: "D:/Demo".into(), observed_at: at,
-            model: None, turn_id: None, agent_id: None, agent_type: None,
+            model: None, agent_id: None,
             tool_name: tool.map(str::to_string), tool_use_id: call.map(str::to_string),
         };
         apply_event(&mut registry, event("UserPromptSubmit", None, None, 1));
@@ -266,5 +284,68 @@ mod tests {
         assert_eq!(registry.sessions["s1"].state, "running-command");
         apply_event(&mut registry, event("PostToolUse", Some("Bash"), Some("shell"), 5));
         assert_eq!(registry.sessions["s1"].state, "thinking");
+    }
+    fn event(name: &str, id: &str, at: u64) -> HookEvent {
+        HookEvent { hook_event_name: name.into(), session_id: id.into(), cwd: "D:/Demo".into(), observed_at: at,
+            model: None, agent_id: None, tool_name: None, tool_use_id: None }
+    }
+    #[test]
+    fn session_end_is_removed_after_display_period() {
+        let mut registry = SessionRegistry::default();
+        apply_event(&mut registry, event("UserPromptSubmit", "a", 1));
+        apply_event(&mut registry, event("SessionEnd", "a", 2));
+        assert!(!cleanup_registry(&mut registry, 2 + COMPLETED_AFTER_MS));
+        assert_eq!(registry.sessions["a"].state, "completed");
+        assert!(cleanup_registry(&mut registry, 3 + COMPLETED_AFTER_MS));
+        assert!(registry.sessions.is_empty());
+    }
+    #[test]
+    fn stale_session_and_its_tools_are_removed() {
+        let mut registry = SessionRegistry::default();
+        apply_event(&mut registry, event("UserPromptSubmit", "a", 1));
+        let mut tool = event("PreToolUse", "a", 2);
+        tool.tool_name = Some("Bash".into());
+        tool.tool_use_id = Some("call".into());
+        apply_event(&mut registry, tool);
+        assert_eq!(registry.active_tools["a"].len(), 1);
+        assert!(cleanup_registry(&mut registry, 3 + STALE_AFTER_MS));
+        assert!(registry.sessions.is_empty());
+        assert!(registry.active_tools.is_empty());
+    }
+    #[test]
+    fn waiting_session_survives_stale_cleanup() {
+        let mut registry = SessionRegistry::default();
+        apply_event(&mut registry, event("UserPromptSubmit", "a", 1));
+        apply_event(&mut registry, event("PermissionRequest", "a", 2));
+        assert!(!cleanup_registry(&mut registry, 3 + STALE_AFTER_MS));
+        assert_eq!(registry.sessions["a"].state, "waiting");
+    }
+    #[test]
+    fn new_turn_drops_completed_agents_but_keeps_active_agents() {
+        let mut registry = SessionRegistry::default();
+        apply_event(&mut registry, event("UserPromptSubmit", "a", 1));
+        for id in ["finished", "active"] {
+            let mut started = event("SubagentStart", "a", 2);
+            started.agent_id = Some(id.into());
+            apply_event(&mut registry, started);
+        }
+        let mut stopped = event("SubagentStop", "a", 3);
+        stopped.agent_id = Some("finished".into());
+        apply_event(&mut registry, stopped);
+        apply_event(&mut registry, event("UserPromptSubmit", "a", 4));
+        assert_eq!(registry.sessions["a"].agents.len(), 1);
+        assert_eq!(registry.sessions["a"].agents[0].id, "active");
+    }
+    #[test]
+    fn compact_events_keep_session_active() {
+        let mut registry = SessionRegistry::default();
+        apply_event(&mut registry, event("UserPromptSubmit", "a", 1));
+        apply_event(&mut registry, event("PreCompact", "a", 2));
+        assert_eq!(registry.sessions["a"].state, "composing");
+        apply_event(&mut registry, event("PostCompact", "a", 3));
+        assert_eq!(registry.sessions["a"].state, "thinking");
+        for name in ["PreCompact", "PostCompact"] {
+            assert!(normalize_hook(&json!({"hook_event_name": name, "session_id": "a"})).is_ok());
+        }
     }
 }
