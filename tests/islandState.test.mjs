@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { newerActivity, selectIsland } from "../src/islandState.ts";
+import { getActivityLabel, newerActivity, selectIsland } from "../src/islandState.ts";
 
 const now = 1_000_000;
 const session = (state, id = state, extra = {}) => ({
@@ -21,8 +21,8 @@ test("空会话与单会话状态", () => {
   assert.deepEqual({ mode: view([]).mode, active: view([]).activeCount, orb: view([]).orb },
     { mode: "minimal", active: 0, orb: { state: "breathing", speed: .65 } });
   for (const [state, label, orb] of [
-    ["thinking", "Thinking…", "solving"], ["editing", "Editing files…", "shaping"],
-    ["completed", "Completed", "breathing"],
+    ["thinking", "Thinking...", "solving"], ["editing", "Editing...", "shaping"],
+    ["completed", "已完成", "breathing"],
   ]) {
     const result = view([session(state)]);
     assert.equal(result.mode, "single-session");
@@ -45,7 +45,7 @@ test("并行会话及等待状态独立计数", () => {
   assert.deepEqual(two.orb, { state: "weaving", speed: 1 });
   const three = view([session("thinking", "a"), session("editing", "b"), session("searching", "c")]);
   assert.equal(three.activeCount, 3);
-  assert.equal(three.label, "3 sessions working");
+  assert.equal(three.label, "3 个会话");
   const mixed = view([session("thinking", "a"), session("waiting", "b")]);
   assert.equal(mixed.mode, "attention");
   assert.equal(mixed.activeCount, 1);
@@ -57,7 +57,7 @@ test("额度耗尽、完成态超时和陈旧会话", () => {
   const quota = { fiveHour: { remainingPercent: 0, resetsAt: null }, weekly: null, updatedAt: 1 };
   const limited = view([session("working")], quota);
   assert.equal(limited.mode, "attention");
-  assert.equal(limited.label, "5H limit reached");
+  assert.equal(limited.label, "额度已用尽");
   assert.deepEqual(limited.orb, { state: "breathing", speed: .5 });
   assert.equal(view([session("completed")], null, now + 3001).mode, "minimal");
   assert.equal(view([session("thinking", "old", { lastActivityAt: now - 600_001 })]).sessions.length, 0);
@@ -67,6 +67,22 @@ test("额度耗尽、完成态超时和陈旧会话", () => {
 test("多个 Subagent 使用准确数量和 Orb", () => {
   const agents = ["a", "b"].map(id => ({ id, state: "thinking", lastActivityAt: now }));
   const result = view([session("working", "main", { agents })]);
-  assert.equal(result.label, "Working · 2 subagents");
+  assert.equal(result.label, "Agents...");
+  assert.equal(result.expandedLabel, "Working with agents...");
   assert.deepEqual(result.orb, { state: "weaving", speed: 1 });
+});
+
+test("Compact 与 Expanded 文案映射", () => {
+  for (const [state, compact, expanded] of [
+    ["thinking", "Thinking...", "Thinking..."],
+    ["searching", "Searching...", "Searching..."],
+    ["editing", "Editing...", "Editing files..."],
+    ["running-command", "Running...", "Running command..."],
+    ["composing", "Compacting...", "Compacting context..."],
+    ["waiting", "等待确认", "等待你的确认"],
+    ["completed", "已完成", "任务已完成"],
+  ]) {
+    assert.equal(getActivityLabel(state, "compact"), compact);
+    assert.equal(getActivityLabel(state, "expanded"), expanded);
+  }
 });
