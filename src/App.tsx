@@ -8,6 +8,7 @@ import "./App.css";
 
 const appWindow = getCurrentWindow();
 const debugEnabled = import.meta.env.DEV && new URLSearchParams(location.search).has("debugIsland");
+const MORPH_MS = 340;
 function setHitRegion(width: number, height: number) { return invoke<void>("set_window_hit_region", { width, height }); }
 function percent(value: LimitWindow | null) { return value ? `${Math.round(value.remainingPercent)}%` : "--"; }
 function tone(value: LimitWindow | null) { return !value ? "neutral" : value.remainingPercent <= 10 ? "critical" : value.remainingPercent <= 30 ? "warning" : "healthy"; }
@@ -26,8 +27,13 @@ function App() {
   const enterTimer = useRef<number | undefined>(undefined);
   const leaveTimer = useRef<number | undefined>(undefined);
   const shrinkTimer = useRef<number | undefined>(undefined);
+  const orbTimer = useRef<number | undefined>(undefined);
   const regionTimer = useRef<number | undefined>(undefined);
-  const regionWidth = useRef(390);
+  const regionWidth = useRef(0);
+  const nativeExpanded = useRef(false);
+  const closingNative = useRef(false);
+  const pointerInside = useRef(false);
+  const compactSize = useRef({ width: 120, height: 40 });
   const usageEventCount = useRef(0);
   const expandedRef = useRef(false);
   const expandingRef = useRef(false);
@@ -40,9 +46,8 @@ function App() {
   const refreshUsage = useCallback(async () => { const version = usageEventCount.current; try { const next = await invoke<UsageSnapshot>("read_limits"); if (version === usageEventCount.current) { setUsage(next); setUsageError(null); } } catch (error) { if (version === usageEventCount.current) setUsageError(String(error)); } }, []);
   useEffect(() => { let mounted = true; let unlistenUsage: (() => void) | undefined; let unlistenError: (() => void) | undefined; void (async () => { try { unlistenUsage = await listen<UsageSnapshot>("usage-updated", event => { if (mounted) { usageEventCount.current++; setUsage(event.payload); setUsageError(null); } }); unlistenError = await listen<string>("usage-error", event => { if (mounted) setUsageError(event.payload); }); if (mounted) void refreshUsage(); } catch (error) { console.error("额度通知接收失败", error); if (mounted) void refreshUsage(); } })(); return () => { mounted = false; unlistenUsage?.(); unlistenError?.(); }; }, [refreshUsage]);
   useEffect(() => { let mounted = true; let unlisten: (() => void) | undefined; const applyActivity = (next: ActivitySnapshot) => setActivity(current => newerActivity(current, next)); void (async () => { try { unlisten = await listen<ActivitySnapshot>("activity-updated", event => { if (mounted) applyActivity(event.payload); }); const next = await invoke<ActivitySnapshot>("read_activity"); if (mounted) applyActivity(next); } catch (error) { console.error("会话状态接收失败", error); } })(); return () => { mounted = false; unlisten?.(); }; }, []);
-  useEffect(() => { setOrbTransitioning(true); const timer = window.setTimeout(() => setOrbTransitioning(false), 300); return () => window.clearTimeout(timer); }, [expanded]);
   useEffect(() => { if (!(debugSessions ?? activity.sessions).some(s => s.state !== "idle")) return; const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, [activity.sessions, debugSessions]);
-  useEffect(() => () => { window.clearTimeout(enterTimer.current); window.clearTimeout(leaveTimer.current); window.clearTimeout(shrinkTimer.current); window.clearTimeout(regionTimer.current); }, []);
+  useEffect(() => () => { window.clearTimeout(enterTimer.current); window.clearTimeout(leaveTimer.current); window.clearTimeout(shrinkTimer.current); window.clearTimeout(orbTimer.current); window.clearTimeout(regionTimer.current); }, []);
   const sessions = debugSessions ?? activity.sessions;
   const view = useMemo(() => selectIsland(sessions, usage, now), [sessions, usage, now]);
   const mode = expanded ? "expanded" : view.mode;
@@ -50,28 +55,78 @@ function App() {
   const expandedHeight = Math.min(420, view.sessions.length > 1 ? 164 + view.sessions.length * 48 : 154);
   const compactWidth = view.mode === "minimal" ? 120 : 224;
   const compactHeight = view.mode === "minimal" ? 40 : 42;
+  compactSize.current = { width: compactWidth, height: compactHeight };
   useEffect(() => { if (expanded) void appWindow.setSize(new LogicalSize(390, expandedHeight + 4)).then(() => setHitRegion(384, expandedHeight + 4)).catch(error => console.error("窗口尺寸调整失败", error)); }, [expandedHeight]);
   useEffect(() => {
-    if (expanded) return;
+    if (expanded || nativeExpanded.current) return;
     window.clearTimeout(regionTimer.current);
-    const delay = compactWidth < regionWidth.current ? (reducedMotion ? 150 : 300) : 0;
+    const delay = compactWidth < regionWidth.current ? (reducedMotion ? 150 : MORPH_MS) : 0;
     regionTimer.current = window.setTimeout(() => {
       void setHitRegion(compactWidth, compactHeight).then(() => { regionWidth.current = compactWidth; }).catch(error => console.error("窗口点击区域调整失败", error));
     }, delay);
     return () => window.clearTimeout(regionTimer.current);
   }, [expanded, compactWidth, compactHeight, reducedMotion]);
-  async function expand() { window.clearTimeout(enterTimer.current); window.clearTimeout(shrinkTimer.current); window.clearTimeout(regionTimer.current); if (expandedRef.current || expandingRef.current) return; expandingRef.current = true; try { await appWindow.setSize(new LogicalSize(390, expandedHeight + 4)); await setHitRegion(384, expandedHeight + 4); regionWidth.current = 384; expandedRef.current = true; setExpanded(true); } catch (error) { console.error("窗口展开失败", error); } finally { expandingRef.current = false; } }
-  function collapse() { window.clearTimeout(leaveTimer.current); if (!expandedRef.current) return; expandedRef.current = false; window.clearTimeout(shrinkTimer.current); setExpanded(false); shrinkTimer.current = window.setTimeout(() => void appWindow.setSize(new LogicalSize(390, 42)).catch(error => console.error("窗口尺寸调整失败", error)), reducedMotion ? 150 : 300); }
-  function onEnter() { window.clearTimeout(leaveTimer.current); if (!expandedRef.current) enterTimer.current = window.setTimeout(() => void expand(), 100); }
-  function onLeave() { window.clearTimeout(enterTimer.current); leaveTimer.current = window.setTimeout(collapse, 300); }
+  function animateOrbHandoff() {
+    window.clearTimeout(orbTimer.current);
+    setOrbTransitioning(true);
+    orbTimer.current = window.setTimeout(() => setOrbTransitioning(false), reducedMotion ? 150 : MORPH_MS);
+  }
+  async function finishCollapse() {
+    if (expandedRef.current || expandingRef.current || !nativeExpanded.current || closingNative.current) return;
+    window.clearTimeout(shrinkTimer.current);
+    closingNative.current = true;
+    try {
+      await appWindow.setSize(new LogicalSize(390, 42));
+      if (expandedRef.current || expandingRef.current) return;
+      nativeExpanded.current = false;
+      const { width, height } = compactSize.current;
+      await setHitRegion(width, height);
+      regionWidth.current = width;
+    } catch (error) { console.error("窗口收起失败", error); }
+    finally { closingNative.current = false; }
+  }
+  async function expand() {
+    window.clearTimeout(enterTimer.current);
+    window.clearTimeout(shrinkTimer.current);
+    window.clearTimeout(regionTimer.current);
+    if (expandedRef.current || expandingRef.current) return;
+    expandingRef.current = true;
+    try {
+      await appWindow.setSize(new LogicalSize(390, expandedHeight + 4));
+      nativeExpanded.current = true;
+      await setHitRegion(384, expandedHeight + 4);
+      regionWidth.current = 384;
+      expandedRef.current = true;
+      animateOrbHandoff();
+      setExpanded(true);
+    } catch (error) { console.error("窗口展开失败", error); }
+    finally {
+      expandingRef.current = false;
+      if (!pointerInside.current && expandedRef.current) collapse();
+      else if (!expandedRef.current && nativeExpanded.current) void finishCollapse();
+    }
+  }
+  function collapse() {
+    window.clearTimeout(leaveTimer.current);
+    if (!expandedRef.current) return;
+    expandedRef.current = false;
+    animateOrbHandoff();
+    setExpanded(false);
+    // 过渡结束后再缩小原生窗口，避免内容在收起途中被系统裁掉。
+    shrinkTimer.current = window.setTimeout(() => void finishCollapse(), reducedMotion ? 190 : MORPH_MS + 80);
+  }
+  function onEnter() { pointerInside.current = true; window.clearTimeout(leaveTimer.current); if (!expandedRef.current) enterTimer.current = window.setTimeout(() => void expand(), 90); }
+  function onLeave() { pointerInside.current = false; window.clearTimeout(enterTimer.current); leaveTimer.current = window.setTimeout(collapse, 260); }
   function setMock(states: Activity[]) { if (!debugEnabled) return; const at = Date.now(); setNow(at); setDebugSessions(states.map((state, index) => mockSession(["YuGNetDDD", "TerminalManager", "AgentUniverse"][index] ?? `Session ${index + 1}`, state, at))); }
   const activeAgents = view.primary?.agents.filter(agent => agent.state !== "completed" && agent.state !== "idle").length ?? 0;
   const secondary = view.mode === "multi-session" ? `${view.sessions.length} 个会话` : activeAgents > 1 ? `${activeAgents} 个子代理` : view.mode === "minimal" ? "额度状态" : view.primary?.state === "waiting" ? "需要你的确认" : "正在处理当前会话";
-  return <><main className={`island ${mode}`} style={expanded ? { height: expandedHeight } : undefined} onMouseEnter={onEnter} onMouseLeave={onLeave} onClick={() => expanded ? collapse() : void expand()} aria-label={view.mode === "minimal" ? `Codex 五小时剩余额度 ${percent(usage?.fiveHour ?? null)}` : view.label}>
+  const quotaExhausted = usage?.fiveHour?.remainingPercent === 0 || usage?.weekly?.remainingPercent === 0;
+  const signal = quotaExhausted ? "quota" : view.waitingCount ? "waiting" : view.primary?.state === "completed" ? "completed" : "normal";
+  return <><main className={`island ${mode}`} data-signal={signal} style={expanded ? { height: expandedHeight } : undefined} onMouseEnter={onEnter} onMouseLeave={onLeave} onTransitionEnd={event => { if (event.target === event.currentTarget && event.propertyName === "height" && !expandedRef.current) void finishCollapse(); }} onClick={() => expanded ? collapse() : void expand()} aria-label={view.mode === "minimal" ? `Codex 五小时剩余额度 ${percent(usage?.fiveHour ?? null)}` : view.label}>
     <div className="island-content"><div className="orb-wrap"><ThinkingOrb className="orb-small" state={view.orb.state} size={20} theme="dark" speed={view.orb.speed} paused={reducedMotion || (expanded && !orbTransitioning)} aria-hidden="true" /><ThinkingOrb className="orb-large" state={view.orb.state} size={64} theme="dark" speed={view.orb.speed} paused={reducedMotion || (!expanded && !orbTransitioning)} aria-hidden="true" /></div>
       <div className="minimal-copy"><span>5 小时</span><strong className={tone(usage?.fiveHour ?? null)}>{percent(usage?.fiveHour ?? null)}</strong></div>
-      <div className="compact-copy"><span className="activity-label" title={view.label}>{view.label}</span>{view.mode === "single-session" && <time>{elapsed(view.primary?.startedAt ?? null, now)}</time>}<span className="compact-limit">5 小时 <strong className={tone(usage?.fiveHour ?? null)}>{percent(usage?.fiveHour ?? null)}</strong></span></div>
-      <div className="expanded-copy"><div className="activity-head"><span title={view.expandedLabel}>{view.expandedLabel}</span><strong title={view.primary?.project ?? ""}>{view.sessions.length === 1 ? view.primary?.project || "Codex 会话" : view.sessions.length > 1 ? `${view.sessions.length} 个会话` : "Codex"}</strong><small>{secondary}</small></div>
+      <div className="compact-copy"><span className="activity-label" key={view.label} title={view.label}>{view.label}</span>{view.mode === "single-session" && <time>{elapsed(view.primary?.startedAt ?? null, now)}</time>}<span className="compact-limit">5 小时 <strong className={tone(usage?.fiveHour ?? null)}>{percent(usage?.fiveHour ?? null)}</strong></span></div>
+      <div className="expanded-copy"><div className="activity-head"><span key={view.expandedLabel} title={view.expandedLabel}>{view.expandedLabel}</span><strong title={view.primary?.project ?? ""}>{view.sessions.length === 1 ? view.primary?.project || "Codex 会话" : view.sessions.length > 1 ? `${view.sessions.length} 个会话` : "Codex"}</strong><small>{secondary}</small></div>
         {view.sessions.length > 1 && <div className="session-list">{view.sessions.map(session => <div className="session-row" key={session.id}><span className={`session-dot ${session.state}`} /><div className="session-text"><strong title={session.project ?? session.cwd ?? ""}>{session.project || session.cwd?.split(/[\\/]/).pop() || "Codex 会话"}</strong><small title={sessionLabel(session)}>{sessionLabel(session)}{session.agents.filter(agent => agent.state !== "completed" && agent.state !== "idle").length > 1 ? ` · ${session.agents.filter(agent => agent.state !== "completed" && agent.state !== "idle").length} 个子代理` : ""}</small></div><time>{elapsed(session.startedAt, now)}</time></div>)}</div>}
         <div className="usage-rows"><UsageRow label="5 小时额度" value={usage?.fiveHour ?? null} /><UsageRow label="每周额度" value={usage?.weekly ?? null} /></div>
         <div className="meta"><span>{view.primary?.model || (usageError ? "额度读取失败" : usage ? "额度已更新" : "正在连接 Codex")}</span><time>{view.primary ? elapsed(view.primary.startedAt, now) : usage ? new Date(usage.updatedAt * 1000).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : ""}</time></div>
