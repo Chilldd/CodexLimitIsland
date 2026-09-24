@@ -1,4 +1,4 @@
-use std::{io::{self, Read, Write}, net::{Ipv4Addr, SocketAddrV4, TcpStream}, process::{Command, Stdio}, time::{Duration, Instant}};
+use std::{io::{self, Read, Write}, net::{Ipv4Addr, SocketAddrV4, TcpStream}, path::PathBuf, process::{Command, Stdio}, time::{Duration, Instant}};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
@@ -33,6 +33,14 @@ fn prevent_hook_pipe_inheritance() -> Result<(), String> {
 
 #[cfg(not(windows))]
 fn prevent_hook_pipe_inheritance() -> Result<(), String> { Ok(()) }
+
+fn auto_start_command(executable: PathBuf) -> Command {
+    let mut command = Command::new(executable);
+    command.arg("--auto-start").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000);
+    command
+}
 
 fn post(input: &[u8]) -> Result<(), SendError> {
     let mut stream = TcpStream::connect_timeout(&ADDRESS.into(), CONNECT_TIMEOUT).map_err(|_| SendError::Unavailable)?;
@@ -91,11 +99,7 @@ fn run_inner() -> Result<(), String> {
         super::diagnostics::log("Hook 未发现监听，尝试启动 GUI", None);
         let exe = std::env::current_exe().map_err(|error| format!("定位当前程序失败：{error}"))?;
         prevent_hook_pipe_inheritance()?;
-        let mut command = Command::new(exe);
-        command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-        #[cfg(windows)]
-        command.creation_flags(0x0800_0000);
-        command.spawn().map_err(|error| format!("启动灵动岛失败：{error}"))?;
+        auto_start_command(exe).spawn().map_err(|error| format!("启动灵动岛失败：{error}"))?;
         Ok(())
     }, post, deadline)
 }
@@ -142,6 +146,12 @@ mod tests {
     #[test]
     fn oversized_input_is_rejected() {
         assert!(validate_input(&vec![0; super::super::activity::MAX_HOOK_BYTES as usize + 1]).is_err());
+    }
+
+    #[test]
+    fn hook_spawns_gui_in_auto_start_mode() {
+        let command = auto_start_command(PathBuf::from("codexlimit.exe"));
+        assert_eq!(command.get_args().collect::<Vec<_>>(), [std::ffi::OsStr::new("--auto-start")]);
     }
 
 }

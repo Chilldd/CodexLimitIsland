@@ -1,12 +1,16 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 fn main() {
-    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--hook")) {
-        if let Err(error) = codexlimit_lib::run_hook_sender() {
-            eprintln!("Codex Limit Island: {error}");
-            std::process::exit(1);
+    let launch_arg = std::env::args_os().nth(1);
+    match codexlimit_lib::launch_source(launch_arg.as_deref()) {
+        codexlimit_lib::LaunchSource::Hook => {
+            if let Err(error) = codexlimit_lib::run_hook_sender() {
+                eprintln!("Codex Limit Island: {error}");
+                std::process::exit(1);
+            }
         }
-    } else {
-        codexlimit_lib::run();
+        source => {
+            if codexlimit_lib::prepare_gui_launch(source) { codexlimit_lib::run(); }
+        }
     }
 }

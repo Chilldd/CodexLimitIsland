@@ -9,6 +9,7 @@ pub fn run_hook_sender() -> Result<(), String> {
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::{
+    ffi::OsStr,
     io::{self, BufRead, BufReader, Write},
     process::{Child, ChildStdin, Command, Stdio},
     sync::{mpsc, Mutex, OnceLock},
@@ -24,6 +25,23 @@ static SERVER: OnceLock<Mutex<Option<AppServer>>> = OnceLock::new();
 static USAGE_EVENTS: OnceLock<mpsc::Sender<()>> = OnceLock::new();
 pub(crate) fn request_usage_refresh() { if let Some(sender) = USAGE_EVENTS.get() { let _ = sender.send(()); } }
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LaunchSource { Manual, AutoStart, Hook }
+
+pub fn launch_source(arg: Option<&OsStr>) -> LaunchSource {
+    match arg {
+        Some(value) if value == OsStr::new("--hook") => LaunchSource::Hook,
+        Some(value) if value == OsStr::new("--auto-start") => LaunchSource::AutoStart,
+        _ => LaunchSource::Manual,
+    }
+}
+
+pub fn prepare_gui_launch(source: LaunchSource) -> bool {
+    let allowed = should_run_gui(source, app_paths::is_auto_start_suppressed, app_paths::clear_suppress_auto_start);
+    if !allowed && source == LaunchSource::AutoStart { diagnostics::log("退出标记阻止自动启动", None); }
+    allowed
+}
 
 #[cfg(windows)]
 #[link(name = "gdi32")]
@@ -250,9 +268,6 @@ fn apply_window_hit_region(_window: tauri::WebviewWindow, _width: f64, _height: 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     diagnostics::log("GUI 启动", None);
-    if app_paths::clear_suppress_auto_start().is_err() {
-        diagnostics::log("清除退出标记失败", None);
-    }
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|_, _, _| {}))
         .invoke_handler(tauri::generate_handler![read_limits, activity::read_activity, set_window_hit_region])
@@ -320,9 +335,52 @@ pub fn run() {
     });
 }
 
+fn should_run_gui(source: LaunchSource, is_suppressed: impl FnOnce() -> bool, clear: impl FnOnce() -> Result<(), String>) -> bool {
+    match source {
+        LaunchSource::AutoStart => !is_suppressed(),
+        LaunchSource::Manual => {
+            if clear().is_err() { diagnostics::log("清除退出标记失败", None); }
+            true
+        }
+        LaunchSource::Hook => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_launch_source() {
+        assert_eq!(launch_source(None), LaunchSource::Manual);
+        assert_eq!(launch_source(Some(OsStr::new("--auto-start"))), LaunchSource::AutoStart);
+        assert_eq!(launch_source(Some(OsStr::new("--hook"))), LaunchSource::Hook);
+    }
+
+    #[test]
+    fn auto_start_rechecks_marker_without_clearing_it() {
+        use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+        let marker = std::env::temp_dir().join(format!("codexlimit-auto-start-test-{}-{}", std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+        fs::File::create(&marker).unwrap();
+        assert!(!should_run_gui(LaunchSource::AutoStart, || marker.exists(), || panic!("自动启动不得清除标记")));
+        assert!(marker.exists());
+        fs::remove_file(&marker).unwrap();
+        assert!(should_run_gui(LaunchSource::AutoStart, || marker.exists(), || panic!("自动启动不得清除标记")));
+    }
+
+    #[test]
+    fn manual_start_clears_marker() {
+        use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+        let marker = std::env::temp_dir().join(format!("codexlimit-manual-start-test-{}-{}", std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+        fs::File::create(&marker).unwrap();
+        assert!(should_run_gui(LaunchSource::Manual, || panic!("手动启动不检查退出标记"), || fs::remove_file(&marker).map_err(|error| error.to_string())));
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn hook_source_does_not_start_gui_or_touch_marker() {
+        assert!(!should_run_gui(LaunchSource::Hook, || panic!("Hook 不检查 GUI 启动标记"), || panic!("Hook 不清除标记")));
+    }
 
     #[test]
     fn identifies_windows_by_duration() {
