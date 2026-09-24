@@ -1,10 +1,39 @@
-use std::{io::{self, Read, Write}, net::{Ipv4Addr, SocketAddrV4, TcpStream}, os::windows::process::CommandExt, process::{Command, Stdio}, time::{Duration, Instant}};
+use std::{ffi::OsStr, io::{self, Read, Write}, net::{Ipv4Addr, SocketAddrV4, TcpStream}, os::windows::process::CommandExt, path::{Path, PathBuf}, process::{Command, Stdio}, time::{Duration, Instant}};
+
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    fn GetStdHandle(n_std_handle: u32) -> *mut std::ffi::c_void;
+    fn SetHandleInformation(handle: *mut std::ffi::c_void, mask: u32, flags: u32) -> i32;
+}
 
 const ADDRESS: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::LOCALHOST, 17321);
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(200);
-const START_TIMEOUT: Duration = Duration::from_secs(3);
+// SessionEnd 和 Interrupt 的 Codex Hook 总超时上限为 3 秒，预留进程启动与退出开销。
+const END_START_TIMEOUT: Duration = Duration::from_millis(2_500);
+const START_TIMEOUT: Duration = Duration::from_secs(10);
 
 enum SendError { Unavailable, Rejected(u16), InvalidResponse }
+
+fn gui_executable(current: &Path) -> PathBuf {
+    if current.file_name() == Some(OsStr::new("codexlimit-hook.exe")) {
+        current.with_file_name("codexlimit.exe")
+    } else {
+        current.to_path_buf()
+    }
+}
+
+fn prevent_hook_pipe_inheritance() -> Result<(), String> {
+    const HANDLE_FLAG_INHERIT: u32 = 1;
+    // GUI 长驻进程不能继承 Codex 用来等待 Hook 结束的标准流管道。
+    for kind in [-10i32, -11, -12] {
+        let handle = unsafe { GetStdHandle(kind as u32) };
+        if handle.is_null() || handle == (-1isize as *mut std::ffi::c_void) { continue; }
+        if unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) } == 0 {
+            return Err(format!("关闭 Hook 标准流继承失败：{}", io::Error::last_os_error()));
+        }
+    }
+    Ok(())
+}
 
 fn post(input: &[u8]) -> Result<(), SendError> {
     let mut stream = TcpStream::connect_timeout(&ADDRESS.into(), CONNECT_TIMEOUT).map_err(|_| SendError::Unavailable)?;
@@ -40,8 +69,8 @@ fn send_with_start(input: &[u8], mut start: impl FnMut() -> Result<(), String>, 
     Err("Hook 监听启动超时".into())
 }
 
-pub fn run() {
-    if let Err(error) = run_inner() { eprintln!("Codex Limit Island: {error}"); }
+pub fn run() -> Result<(), String> {
+    run_inner().inspect_err(|error| super::diagnostics::log("Hook 发送失败", Some(error)))
 }
 
 fn run_inner() -> Result<(), String> {
@@ -49,12 +78,23 @@ fn run_inner() -> Result<(), String> {
     io::stdin().take(super::activity::MAX_HOOK_BYTES + 1).read_to_end(&mut input)
         .map_err(|error| format!("读取 Hook 输入失败：{error}"))?;
     validate_input(&input)?;
+    let event_name = serde_json::from_slice::<serde_json::Value>(&input)
+        .ok().and_then(|value| value.get("hook_event_name")?.as_str().map(str::to_owned));
+    if matches!(event_name.as_deref(), Some("SessionStart" | "UserPromptSubmit" | "SessionEnd")) {
+        super::diagnostics::log("Codex 已调用 Hook", event_name.as_deref());
+    }
+    let deadline = match event_name.as_deref() {
+        Some("SessionEnd" | "Interrupt") => END_START_TIMEOUT,
+        _ => START_TIMEOUT,
+    };
     send_with_start(&input, || {
-        let exe = std::env::current_exe().map_err(|error| format!("定位当前程序失败：{error}"))?;
+        super::diagnostics::log("Hook 未发现监听，尝试启动 GUI", None);
+        let exe = gui_executable(&std::env::current_exe().map_err(|error| format!("定位当前程序失败：{error}"))?);
+        prevent_hook_pipe_inheritance()?;
         Command::new(exe).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
             .creation_flags(0x0800_0000).spawn().map_err(|error| format!("启动灵动岛失败：{error}"))?;
         Ok(())
-    }, post, START_TIMEOUT)
+    }, post, deadline)
 }
 
 fn validate_input(input: &[u8]) -> Result<(), String> {
@@ -92,5 +132,10 @@ mod tests {
     #[test]
     fn oversized_input_is_rejected() {
         assert!(validate_input(&vec![0; super::super::activity::MAX_HOOK_BYTES as usize + 1]).is_err());
+    }
+
+    #[test]
+    fn console_hook_starts_gui_executable() {
+        assert_eq!(gui_executable(Path::new(r"C:\app\codexlimit-hook.exe")), Path::new(r"C:\app\codexlimit.exe"));
     }
 }

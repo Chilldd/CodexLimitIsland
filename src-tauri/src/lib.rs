@@ -1,6 +1,9 @@
 mod activity;
+mod diagnostics;
 mod hook_sender;
-pub fn run_hook_sender() { hook_sender::run(); }
+pub fn run_hook_sender() -> Result<(), String> {
+    hook_sender::run()
+}
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::{
@@ -245,6 +248,7 @@ fn set_window_hit_region(window: tauri::WebviewWindow, width: f64, height: f64) 
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    diagnostics::log("GUI 启动", None);
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|_, _, _| {}))
         .invoke_handler(tauri::generate_handler![read_limits, activity::read_activity, set_window_hit_region])
@@ -273,11 +277,13 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            diagnostics::log("GUI setup 开始", None);
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&quit])?;
             let tray = app.tray_by_id("main").ok_or_else(|| io::Error::other("找不到托盘图标"))?;
             tray.set_menu(Some(menu))?;
             activity::start_listener(app.handle().clone()).map_err(std::io::Error::other)?;
+            diagnostics::log("Hook 监听已启动", None);
             start_usage_listener(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
                 if let Some(monitor) = window.primary_monitor()? {
@@ -294,7 +300,10 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("无法启动 Codex 限额岛");
+        .unwrap_or_else(|error| {
+            diagnostics::log("GUI 构建失败", Some(&error.to_string()));
+            panic!("无法启动 Codex 限额岛：{error}");
+        });
     app.run(|_, event| {
         if let tauri::RunEvent::Exit = event {
             if let Some(mutex) = SERVER.get() {
