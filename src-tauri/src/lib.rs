@@ -1,4 +1,6 @@
 mod activity;
+mod app_paths;
+mod codex_runtime;
 mod diagnostics;
 mod hook_sender;
 pub fn run_hook_sender() -> Result<(), String> {
@@ -7,14 +9,13 @@ pub fn run_hook_sender() -> Result<(), String> {
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::{
-    env, fs,
     io::{self, BufRead, BufReader, Write},
-    path::PathBuf,
-    os::windows::process::CommandExt,
     process::{Child, ChildStdin, Command, Stdio},
     sync::{mpsc, Mutex, OnceLock},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use tauri::Manager;
 use tauri::Emitter;
 use tauri::menu::{Menu, MenuItem};
@@ -24,6 +25,7 @@ static USAGE_EVENTS: OnceLock<mpsc::Sender<()>> = OnceLock::new();
 pub(crate) fn request_usage_refresh() { if let Some(sender) = USAGE_EVENTS.get() { let _ = sender.send(()); } }
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);
 
+#[cfg(windows)]
 #[link(name = "gdi32")]
 unsafe extern "system" {
     #[link_name = "CreateRectRgn"]
@@ -32,6 +34,7 @@ unsafe extern "system" {
     fn delete_object(handle: *mut std::ffi::c_void) -> i32;
 }
 
+#[cfg(windows)]
 #[link(name = "user32")]
 unsafe extern "system" {
     #[link_name = "SetWindowRgn"]
@@ -69,13 +72,15 @@ impl Drop for AppServer {
 
 impl AppServer {
     fn start() -> Result<Self, String> {
-        let executable = find_codex_runtime()?;
-        let mut child = Command::new(executable)
-            .arg("app-server")
+        let executable = codex_runtime::find_codex_runtime()?;
+        let mut command = Command::new(executable);
+        command.arg("app-server")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        let mut child = command
             .spawn()
             .map_err(|error| format!("无法启动 Codex App Server：{error}"))?;
         let stdin = child.stdin.take().ok_or("Codex 标准输入不可用")?;
@@ -138,21 +143,6 @@ impl AppServer {
             return Ok(value);
         }
     }
-}
-
-fn find_codex_runtime() -> Result<PathBuf, String> {
-    let local = env::var_os("LOCALAPPDATA").ok_or("无法确定 Windows 用户目录")?;
-    let root = PathBuf::from(local).join("OpenAI").join("Codex").join("bin");
-    let directories = fs::read_dir(&root)
-        .map_err(|_| "未找到 Codex App 运行目录；请先安装并启动 Codex App".to_string())?;
-    let mut candidates = directories.filter_map(Result::ok)
-        .map(|entry| entry.path().join("codex.exe"))
-        .filter(|path| path.is_file())
-        .collect::<Vec<_>>();
-    candidates.sort_by_key(|path| fs::metadata(path).and_then(|value| value.modified()).ok());
-    candidates.reverse();
-    candidates.into_iter().next()
-        .ok_or("未找到 Codex App 自带的 codex.exe".to_string())
 }
 
 fn parse_window(value: &Value) -> Option<(u64, LimitWindow)> {
@@ -229,6 +219,11 @@ fn set_window_hit_region(window: tauri::WebviewWindow, width: f64, height: f64) 
     if !width.is_finite() || !height.is_finite() || !(100.0..=390.0).contains(&width) || !(40.0..=424.0).contains(&height) {
         return Err("窗口点击区域超出允许范围".into());
     }
+    apply_window_hit_region(window, width, height)
+}
+
+#[cfg(windows)]
+fn apply_window_hit_region(window: tauri::WebviewWindow, width: f64, height: f64) -> Result<(), String> {
     let size = window.outer_size().map_err(|error| error.to_string())?;
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let region_width = (width * scale).round() as i32;
@@ -246,9 +241,18 @@ fn set_window_hit_region(window: tauri::WebviewWindow, width: f64, height: f64) 
     Ok(())
 }
 
+#[cfg(not(windows))]
+fn apply_window_hit_region(_window: tauri::WebviewWindow, _width: f64, _height: f64) -> Result<(), String> {
+    // 原生点击区域裁剪仅在 Windows 实现；其他平台先保持完整窗口可交互。
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     diagnostics::log("GUI 启动", None);
+    if app_paths::clear_suppress_auto_start().is_err() {
+        diagnostics::log("清除退出标记失败", None);
+    }
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|_, _, _| {}))
         .invoke_handler(tauri::generate_handler![read_limits, activity::read_activity, set_window_hit_region])
@@ -273,6 +277,9 @@ pub fn run() {
         })
         .on_menu_event(|app, event| {
             if event.id().as_ref() == "quit" {
+                if app_paths::suppress_auto_start().is_err() {
+                    diagnostics::log("创建退出标记失败", None);
+                }
                 app.exit(0);
             }
         })

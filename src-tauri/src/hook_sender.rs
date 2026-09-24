@@ -1,5 +1,8 @@
-use std::{ffi::OsStr, io::{self, Read, Write}, net::{Ipv4Addr, SocketAddrV4, TcpStream}, os::windows::process::CommandExt, path::{Path, PathBuf}, process::{Command, Stdio}, time::{Duration, Instant}};
+use std::{io::{self, Read, Write}, net::{Ipv4Addr, SocketAddrV4, TcpStream}, process::{Command, Stdio}, time::{Duration, Instant}};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
+#[cfg(windows)]
 #[link(name = "kernel32")]
 unsafe extern "system" {
     fn GetStdHandle(n_std_handle: u32) -> *mut std::ffi::c_void;
@@ -14,14 +17,7 @@ const START_TIMEOUT: Duration = Duration::from_secs(10);
 
 enum SendError { Unavailable, Rejected(u16), InvalidResponse }
 
-fn gui_executable(current: &Path) -> PathBuf {
-    if current.file_name() == Some(OsStr::new("codexlimit-hook.exe")) {
-        current.with_file_name("codexlimit.exe")
-    } else {
-        current.to_path_buf()
-    }
-}
-
+#[cfg(windows)]
 fn prevent_hook_pipe_inheritance() -> Result<(), String> {
     const HANDLE_FLAG_INHERIT: u32 = 1;
     // GUI 长驻进程不能继承 Codex 用来等待 Hook 结束的标准流管道。
@@ -34,6 +30,9 @@ fn prevent_hook_pipe_inheritance() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(not(windows))]
+fn prevent_hook_pipe_inheritance() -> Result<(), String> { Ok(()) }
 
 fn post(input: &[u8]) -> Result<(), SendError> {
     let mut stream = TcpStream::connect_timeout(&ADDRESS.into(), CONNECT_TIMEOUT).map_err(|_| SendError::Unavailable)?;
@@ -48,13 +47,14 @@ fn post(input: &[u8]) -> Result<(), SendError> {
     if status == 204 { Ok(()) } else { Err(SendError::Rejected(status)) }
 }
 
-fn send_with_start(input: &[u8], mut start: impl FnMut() -> Result<(), String>, mut send: impl FnMut(&[u8]) -> Result<(), SendError>, deadline: Duration) -> Result<(), String> {
+fn send_with_start(input: &[u8], mut suppressed: impl FnMut() -> bool, mut start: impl FnMut() -> Result<(), String>, mut send: impl FnMut(&[u8]) -> Result<(), SendError>, deadline: Duration) -> Result<(), String> {
     match send(input) {
         Ok(()) => return Ok(()),
         Err(SendError::Rejected(code)) => return Err(format!("Hook 请求被拒绝，HTTP {code}")),
         Err(SendError::InvalidResponse) => return Err("Hook 响应无效".into()),
         Err(SendError::Unavailable) => {},
     }
+    if suppressed() { return Ok(()); }
     start()?;
     let until = Instant::now() + deadline;
     while Instant::now() < until {
@@ -87,12 +87,15 @@ fn run_inner() -> Result<(), String> {
         Some("SessionEnd" | "Interrupt") => END_START_TIMEOUT,
         _ => START_TIMEOUT,
     };
-    send_with_start(&input, || {
+    send_with_start(&input, super::app_paths::is_auto_start_suppressed, || {
         super::diagnostics::log("Hook 未发现监听，尝试启动 GUI", None);
-        let exe = gui_executable(&std::env::current_exe().map_err(|error| format!("定位当前程序失败：{error}"))?);
+        let exe = std::env::current_exe().map_err(|error| format!("定位当前程序失败：{error}"))?;
         prevent_hook_pipe_inheritance()?;
-        Command::new(exe).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
-            .creation_flags(0x0800_0000).spawn().map_err(|error| format!("启动灵动岛失败：{error}"))?;
+        let mut command = Command::new(exe);
+        command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        #[cfg(windows)]
+        command.creation_flags(0x0800_0000);
+        command.spawn().map_err(|error| format!("启动灵动岛失败：{error}"))?;
         Ok(())
     }, post, deadline)
 }
@@ -109,24 +112,31 @@ mod tests {
     #[test]
     fn running_listener_sends_without_start() {
         let starts = Cell::new(0);
-        let result = send_with_start(b"{}", || { starts.set(starts.get() + 1); Ok(()) }, |_| Ok(()), Duration::from_millis(1));
+        let result = send_with_start(b"{}", || true, || { starts.set(starts.get() + 1); Ok(()) }, |_| Ok(()), Duration::from_millis(1));
         assert!(result.is_ok()); assert_eq!(starts.get(), 0);
     }
     #[test]
     fn starts_and_retries_current_event() {
         let attempts = Cell::new(0);
         let starts = Cell::new(0);
-        let result = send_with_start(b"{}", || { starts.set(starts.get() + 1); Ok(()) }, |_| {
+        let result = send_with_start(b"{}", || false, || { starts.set(starts.get() + 1); Ok(()) }, |_| {
             attempts.set(attempts.get() + 1);
             if attempts.get() == 1 { Err(SendError::Unavailable) } else { Ok(()) }
         }, Duration::from_millis(300));
         assert!(result.is_ok()); assert_eq!(starts.get(), 1); assert_eq!(attempts.get(), 2);
     }
     #[test]
+    fn suppressed_without_listener_does_not_start() {
+        let starts = Cell::new(0);
+        let result = send_with_start(b"{}", || true, || { starts.set(starts.get() + 1); Ok(()) }, |_| Err(SendError::Unavailable), Duration::from_millis(1));
+        assert!(result.is_ok());
+        assert_eq!(starts.get(), 0);
+    }
+    #[test]
     fn timeout_and_rejection_are_bounded() {
-        let timeout = send_with_start(b"{}", || Ok(()), |_| Err(SendError::Unavailable), Duration::from_millis(1));
+        let timeout = send_with_start(b"{}", || false, || Ok(()), |_| Err(SendError::Unavailable), Duration::from_millis(1));
         assert!(timeout.unwrap_err().contains("超时"));
-        let rejected = send_with_start(b"{}", || panic!("不应启动"), |_| Err(SendError::Rejected(400)), Duration::from_millis(1));
+        let rejected = send_with_start(b"{}", || false, || panic!("不应启动"), |_| Err(SendError::Rejected(400)), Duration::from_millis(1));
         assert!(rejected.unwrap_err().contains("400"));
     }
     #[test]
@@ -134,8 +144,4 @@ mod tests {
         assert!(validate_input(&vec![0; super::super::activity::MAX_HOOK_BYTES as usize + 1]).is_err());
     }
 
-    #[test]
-    fn console_hook_starts_gui_executable() {
-        assert_eq!(gui_executable(Path::new(r"C:\app\codexlimit-hook.exe")), Path::new(r"C:\app\codexlimit.exe"));
-    }
 }

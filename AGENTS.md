@@ -8,8 +8,9 @@
 
 ## 关键链路
 
-- `src-tauri/src/lib.rs` 启动 Codex App 自带的 `codex.exe app-server`，调用 `account/rateLimits/read`。按 `windowDurationMins` 识别五小时和每周窗口。不要读取或记录登录令牌。
-- Codex 命令型 Hook 将标准输入 JSON 交给同一程序的 `--hook` 模式，POST 到 `127.0.0.1:17321/api/codex/hook`；GUI 未运行时限时启动并重试。`src-tauri/src/activity.rs` 只在内存中保留状态所需字段，不持久化提示词、工具参数或工具输出。
+- `src-tauri/src/codex_runtime.rs` 在 Windows 和 macOS 优先查找常见的 Codex App 内置程序位置，再按平台从 `PATH` 查找 `codex`，通过 `app-server` 调用 `account/rateLimits/read`。按 `windowDurationMins` 识别五小时和每周窗口。不要读取或记录登录令牌。
+- Codex 命令型 Hook 运行 `codexlimit --hook`（Windows 为 `codexlimit.exe --hook`），将标准输入 JSON POST 到 `127.0.0.1:17321/api/codex/hook`；GUI 未运行时限时启动同一程序的 GUI 模式并重试。`src-tauri/src/activity.rs` 只在内存中保留状态所需字段，不持久化提示词、工具参数或工具输出。
+- 用户通过托盘明确“退出”后，Hook 不会再次自动唤醒灵动岛；再次手动启动 Codex Limit Island 后恢复自动唤醒。应用自己的少量持久化状态位于 `~/.codex-limit-island/`。
 - `src/App.tsx` 启动时调用 `read_limits`，Rust 在 Root Stop、SessionEnd、app-server 通知及每 5 分钟校准时刷新额度；Tauri 的 `activity-updated` 事件实时接收会话状态，`read_activity` 只用于窗口初次加载。`src/islandState.ts` 负责选择灵动岛模式。调整状态规则时，同时检查 Hook 事件映射和 UI 选择逻辑。
 - 用户级 Hook 配置在 `%USERPROFILE%\.codex\hooks.json`，不属于项目文件。修改 Hook 命令会触发 Codex 重新信任；不要绕过信任机制，也不要把本机绝对路径写进仓库配置。
 
