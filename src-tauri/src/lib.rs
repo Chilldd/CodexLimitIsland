@@ -198,7 +198,7 @@ fn start_usage_listener(app: tauri::AppHandle) {
     let (sender, notifications) = mpsc::channel();
     if USAGE_EVENTS.set(sender).is_err() { return; }
     std::thread::spawn(move || loop {
-        let notified = match notifications.recv_timeout(Duration::from_secs(5 * 60)) {
+        let notified = match notifications.recv_timeout(Duration::from_secs(30)) {
             Ok(()) => true,
             Err(mpsc::RecvTimeoutError::Timeout) => false,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,

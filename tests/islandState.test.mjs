@@ -79,7 +79,7 @@ test("Compact 与 Expanded 文案映射", () => {
     ["editing", "Editing...", "Editing files..."],
     ["running-command", "Running...", "Running command..."],
     ["composing", "Compacting...", "Compacting context..."],
-    ["waiting", "等待确认", "等待你的确认"],
+    ["waiting", "等待审批", "等待审批"],
     ["completed", "已完成", "任务已完成"],
   ]) {
     assert.equal(getActivityLabel(state, "compact"), compact);

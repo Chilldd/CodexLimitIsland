@@ -17,7 +17,7 @@ const activityCopy: Record<Activity, { compact: string; expanded: string }> = {
   "running-command": { compact: "Running...", expanded: "Running command..." },
   connecting: { compact: "Connecting...", expanded: "Connecting..." },
   composing: { compact: "Compacting...", expanded: "Compacting context..." },
-  waiting: { compact: "等待确认", expanded: "等待你的确认" },
+  waiting: { compact: "等待审批", expanded: "等待审批" },
   completed: { compact: "已完成", expanded: "任务已完成" },
 };
 export function getActivityLabel(state: Activity, mode: "compact" | "expanded"): string { return activityCopy[state][mode]; }
@@ -38,7 +38,7 @@ export function selectIsland(sessions: Session[], usage: UsageSnapshot | null, n
   const primary = top[0];
   const base = { primary, sessions: top, activeCount: working.length, waitingCount };
   if (usage?.fiveHour?.remainingPercent === 0 || usage?.weekly?.remainingPercent === 0) return { ...base, mode: "attention", label: "额度已用尽", expandedLabel: usage?.fiveHour?.remainingPercent === 0 ? "5 小时额度已用尽" : "每周额度已用尽", orb: { state: "breathing", speed: .5 } };
-  if (waitingCount) return { ...base, mode: "attention", label: "等待确认", expandedLabel: "等待你的确认", orb: ORB_CONFIG.waiting };
+  if (waitingCount) return { ...base, mode: "attention", label: "等待审批", expandedLabel: "等待审批", orb: ORB_CONFIG.waiting };
   if (working.length > 1) return { ...base, mode: "multi-session", label: `${working.length} 个会话`, expandedLabel: `${working.length} 个会话运行中`, orb: { state: "weaving", speed: 1 } };
   if (working.length === 1) {
     const activeAgents = working[0].agents.filter(a => a.state !== "completed" && a.state !== "idle").length;
