@@ -61,6 +61,12 @@ unsafe extern "system" {
 unsafe extern "system" {
     #[link_name = "SetWindowRgn"]
     fn set_window_rgn(hwnd: *mut std::ffi::c_void, region: *mut std::ffi::c_void, redraw: i32) -> i32;
+    #[link_name = "GetWindowLongPtrW"]
+    fn get_window_long_ptr(hwnd: *mut std::ffi::c_void, index: i32) -> isize;
+    #[link_name = "SetWindowLongPtrW"]
+    fn set_window_long_ptr(hwnd: *mut std::ffi::c_void, index: i32, value: isize) -> isize;
+    #[link_name = "SetWindowPos"]
+    fn set_window_pos(hwnd: *mut std::ffi::c_void, insert_after: *mut std::ffi::c_void, x: i32, y: i32, width: i32, height: i32, flags: u32) -> i32;
 }
 
 #[derive(Clone, Serialize)]
@@ -248,6 +254,28 @@ fn set_window_hit_region(window: tauri::WebviewWindow, width: f64, height: f64) 
 }
 
 #[cfg(windows)]
+fn keep_window_borderless(window: &tauri::WebviewWindow) -> Result<(), String> {
+    const GWL_STYLE: i32 = -16;
+    const TITLE_BAR_STYLES: isize = 0x00c0_0000 | 0x0004_0000 | 0x0008_0000 | 0x0002_0000 | 0x0001_0000;
+    const REFRESH_FRAME: u32 = 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020;
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    let style = unsafe { get_window_long_ptr(hwnd.0, GWL_STYLE) };
+    if style == 0 {
+        return Err(format!("读取窗口样式失败：{}", io::Error::last_os_error()));
+    }
+    if style & TITLE_BAR_STYLES != 0 {
+        // 透明窗口在焦点或尺寸变化后可能重新显示原生标题栏；保留其余窗口样式。
+        if unsafe { set_window_long_ptr(hwnd.0, GWL_STYLE, style & !TITLE_BAR_STYLES) } == 0 {
+            return Err(format!("移除窗口标题栏失败：{}", io::Error::last_os_error()));
+        }
+    }
+    if unsafe { set_window_pos(hwnd.0, std::ptr::null_mut(), 0, 0, 0, 0, REFRESH_FRAME) } == 0 {
+        return Err(format!("刷新窗口边框失败：{}", io::Error::last_os_error()));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
 fn apply_window_hit_region(window: tauri::WebviewWindow, width: f64, height: f64) -> Result<(), String> {
     let size = window.outer_size().map_err(|error| error.to_string())?;
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
@@ -263,6 +291,7 @@ fn apply_window_hit_region(window: tauri::WebviewWindow, width: f64, height: f64
         unsafe { delete_object(region); }
         return Err(format!("窗口点击区域调整失败：{error}"));
     }
+    keep_window_borderless(&window)?;
     Ok(())
 }
 
@@ -398,6 +427,16 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|_, _, _| {}))
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![read_limits, activity::read_activity, token_usage::read_token_usage, set_window_hit_region])
+        .on_window_event(|window, event| {
+            #[cfg(windows)]
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::Focused(_)) {
+                if let Some(webview) = window.app_handle().get_webview_window("main") {
+                    if let Err(error) = keep_window_borderless(&webview) {
+                        eprintln!("窗口焦点变化后修复标题栏失败：{error}");
+                    }
+                }
+            }
+        })
         // 左键切换浮窗，右键由托盘菜单提供退出入口。
         .on_tray_icon_event(|app, event| {
             if let tauri::tray::TrayIconEvent::Click {
@@ -408,7 +447,11 @@ pub fn run() {
                 if let Some(window) = app.get_webview_window("main") {
                     let result = match window.is_visible() {
                         Ok(true) => window.hide(),
-                        Ok(false) => window.show().and_then(|_| window.set_focus()),
+                        Ok(false) => window.show().and_then(|_| window.set_focus()).and_then(|_| {
+                            #[cfg(windows)]
+                            keep_window_borderless(&window).map_err(io::Error::other)?;
+                            Ok(())
+                        }),
                         Err(error) => Err(error),
                     };
                     if let Err(error) = result {
@@ -446,6 +489,8 @@ pub fn run() {
                         origin.y + top,
                     ))?;
                 }
+                #[cfg(windows)]
+                keep_window_borderless(&window).map_err(io::Error::other)?;
             }
             Ok(())
         })
