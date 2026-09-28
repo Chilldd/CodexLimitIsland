@@ -3,7 +3,7 @@ export type OrbState = "working" | "searching" | "solving" | "listening" | "conn
 export type LimitWindow = { remainingPercent: number; resetsAt: number | null };
 export type UsageSnapshot = { fiveHour: LimitWindow | null; weekly: LimitWindow | null; updatedAt: number };
 export type Agent = { id: string; state: Activity; lastActivityAt: number };
-export type Session = { id: string; project: string | null; cwd: string | null; state: Activity; currentCommand: string | null; startedAt: number | null; lastActivityAt: number; completedAt: number | null; model: string | null; agents: Agent[] };
+export type Session = { id: string; project: string | null; cwd: string | null; state: Activity; currentCommand: string | null; startedAt: number | null; lastActivityAt: number; completedAt: number | null; model: string | null; currentTurnId?: string | null; agents: Agent[] };
 export type ActivitySnapshot = { sessions: Session[]; updatedAt: number };
 export function newerActivity(current: ActivitySnapshot, next: ActivitySnapshot): ActivitySnapshot { return next.updatedAt >= current.updatedAt ? next : current; }
 export type IslandView = { mode: "minimal" | "single-session" | "multi-session" | "attention"; label: string; expandedLabel: string; orb: { state: OrbState; speed: number }; primary?: Session; sessions: Session[]; activeCount: number; waitingCount: number };
@@ -32,14 +32,16 @@ export function sessionLabel(session: Session): string {
   return getActivityLabel(session.state, "expanded");
 }
 export function selectIsland(sessions: Session[], usage: UsageSnapshot | null, now: number): IslandView {
-  const top = sessions.filter(s => s.state === "completed" ? now - (s.completedAt ?? s.lastActivityAt) <= 3000 : s.state === "waiting" || now - s.lastActivityAt <= 600_000).sort((a, b) => rank[a.state] - rank[b.state] || b.lastActivityAt - a.lastActivityAt);
+  const top = sessions.filter(s => s.state === "completed" ? now - (s.completedAt ?? s.lastActivityAt) <= 3_000 : s.state === "waiting" || now - s.lastActivityAt <= 600_000).sort((a, b) => rank[a.state] - rank[b.state] || b.lastActivityAt - a.lastActivityAt);
   const working = top.filter(s => rank[s.state] === 3);
+  const completedCount = top.filter(s => s.state === "completed").length;
   const waitingCount = top.filter(s => s.state === "waiting").length;
   const primary = top[0];
   const base = { primary, sessions: top, activeCount: working.length, waitingCount };
   if (usage?.fiveHour?.remainingPercent === 0 || usage?.weekly?.remainingPercent === 0) return { ...base, mode: "attention", label: "额度已用尽", expandedLabel: usage?.fiveHour?.remainingPercent === 0 ? "5 小时额度已用尽" : "每周额度已用尽", orb: { state: "breathing", speed: .5 } };
   if (waitingCount) return { ...base, mode: "attention", label: "等待审批", expandedLabel: "等待审批", orb: ORB_CONFIG.waiting };
   if (working.length > 1) return { ...base, mode: "multi-session", label: `${working.length} 个会话`, expandedLabel: `${working.length} 个会话运行中`, orb: { state: "weaving", speed: 1 } };
+  if (working.length === 1 && completedCount) return { ...base, mode: "multi-session", label: `${working.length} 运行 · ${completedCount} 完成`, expandedLabel: `${working.length} 个会话运行中 · ${completedCount} 个已完成`, orb: { state: "weaving", speed: 1 } };
   if (working.length === 1) {
     const activeAgents = working[0].agents.filter(a => a.state !== "completed" && a.state !== "idle").length;
     return { ...base, mode: "single-session", label: activeAgents > 1 ? "Agents..." : getActivityLabel(working[0].state, "compact"), expandedLabel: activeAgents > 1 ? "Working with agents..." : sessionLabel(working[0]), orb: activeAgents > 1 ? { state: "weaving", speed: 1 } : ORB_CONFIG[working[0].state] };

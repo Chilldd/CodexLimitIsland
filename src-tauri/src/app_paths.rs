@@ -17,7 +17,8 @@ fn suppress_at(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn clear_at(path: &Path) -> io::Result<()> {
+/// 删除文件；文件不存在时视为成功。
+pub(super) fn clear_at(path: &Path) -> io::Result<()> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),

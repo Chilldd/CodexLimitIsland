@@ -6,7 +6,7 @@ use tauri::Emitter;
 static REGISTRY: OnceLock<Mutex<SessionRegistry>> = OnceLock::new();
 const STALE_AFTER_MS: u64 = 10 * 60 * 1000;
 const ACTIVE_AFTER_MS: u64 = 2 * 60 * 60 * 1000;
-const COMPLETED_AFTER_MS: u64 = 8_000;
+const COMPLETED_AFTER_MS: u64 = 12_000;
 pub const MAX_HOOK_BYTES: u64 = 1024 * 1024;
 const HOOK_PORT: u16 = 17321;
 const MAX_HEADER_BYTES: usize = 16 * 1024;
@@ -23,7 +23,7 @@ pub struct Session {
     pub last_activity_at: u64,
     pub completed_at: Option<u64>,
     pub model: Option<String>,
-    #[serde(skip_serializing)]
+    #[serde(rename = "currentTurnId")]
     pub current_turn_id: Option<String>,
     #[serde(skip_serializing)]
     pub root_state: String,

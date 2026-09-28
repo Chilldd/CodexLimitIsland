@@ -1,8 +1,13 @@
+use super::{diagnostics, settings};
 use std::{env, ffi::OsStr, path::PathBuf};
 #[cfg(any(windows, target_os = "macos"))]
 use std::path::Path;
 
 pub fn find_codex_runtime() -> Result<PathBuf, String> {
+    if let Some(path) = usable_configured_path(settings::configured_codex_path()) {
+        return Ok(path);
+    }
+
     #[cfg(windows)]
     if let Some(path) = windows_app_runtime(env::var_os("LOCALAPPDATA").as_deref()) {
         return Ok(path);
@@ -15,7 +20,19 @@ pub fn find_codex_runtime() -> Result<PathBuf, String> {
 
     let name = if cfg!(windows) { "codex.exe" } else { "codex" };
     find_on_path(env::var_os("PATH").as_deref(), name)
-        .ok_or_else(|| "未找到 Codex 可执行程序；请安装 Codex CLI 并将其加入 PATH".to_string())
+        .ok_or_else(|| "未找到 Codex 可执行程序；请安装 Codex CLI、加入 PATH，或在托盘菜单中设置 Codex 程序路径".to_string())
+}
+
+/// 校验托盘菜单中设置的路径；文件已被移动或删除时回退到自动查找。
+fn usable_configured_path(configured: Option<PathBuf>) -> Option<PathBuf> {
+    match configured {
+        Some(path) if path.is_file() => Some(path),
+        Some(path) => {
+            diagnostics::log("自定义 Codex 路径无效，回退自动查找", Some(&path.display().to_string()));
+            None
+        }
+        None => None,
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -68,6 +85,18 @@ mod tests {
         fs::create_dir_all(binary.parent().unwrap()).unwrap();
         fs::File::create(&binary).unwrap();
         assert_eq!(windows_app_runtime(Some(dir.as_os_str())), Some(binary));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn configured_path_wins_only_when_it_exists() {
+        let dir = env::temp_dir().join(format!("codexlimit-configured-runtime-test-{}-{}", std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir_all(&dir).unwrap();
+        let binary = dir.join(if cfg!(windows) { "codex.exe" } else { "codex" });
+        fs::File::create(&binary).unwrap();
+        assert_eq!(usable_configured_path(Some(binary.clone())), Some(binary));
+        assert_eq!(usable_configured_path(Some(dir.join("missing"))), None);
+        assert_eq!(usable_configured_path(None), None);
         fs::remove_dir_all(dir).unwrap();
     }
 }

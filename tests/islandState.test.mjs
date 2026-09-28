@@ -59,7 +59,8 @@ test("额度耗尽、完成态超时和陈旧会话", () => {
   assert.equal(limited.mode, "attention");
   assert.equal(limited.label, "额度已用尽");
   assert.deepEqual(limited.orb, { state: "breathing", speed: .5 });
-  assert.equal(view([session("completed")], null, now + 3001).mode, "minimal");
+  assert.equal(view([session("completed")], null, now + 3_001).mode, "minimal");
+  assert.equal(view([session("thinking", "a"), session("completed", "b")]).label, "1 运行 · 1 完成");
   assert.equal(view([session("thinking", "old", { lastActivityAt: now - 600_001 })]).sessions.length, 0);
   assert.equal(view([session("waiting", "old", { lastActivityAt: now - 600_001 })]).waitingCount, 1);
 });
