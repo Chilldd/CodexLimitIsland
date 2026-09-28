@@ -53,7 +53,15 @@ pub enum TurnResultKind { Completed, Interrupted }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TurnResult { pub kind: TurnResultKind, pub session_id: String, pub turn_id: Option<String>, pub finished_at: u64 }
+pub struct TurnResult {
+    pub kind: TurnResultKind,
+    pub session_id: String,
+    pub turn_id: Option<String>,
+    pub finished_at: u64,
+    pub project: Option<String>,
+    pub model: Option<String>,
+    pub started_at: Option<u64>,
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -197,9 +205,10 @@ fn update_agent(session: &mut Session, id: &str, activity: Option<Activity>, att
 }
 fn apply_event(registry: &mut SessionRegistry, event: HookEvent) {
     if !matches!(event.hook_event_name.as_str(), "SessionStart" | "SessionEnd" | "UserPromptSubmit")
-        && registry.sessions.get(&event.session_id).is_some_and(|session| session.lifecycle == Lifecycle::Idle)
-        && registry.recent_results.iter().rev().find(|result| result.session_id == event.session_id)
-            .is_some_and(|result| result.turn_id == event.turn_id) { return; }
+        && registry.sessions.get(&event.session_id).is_some_and(|session| session.lifecycle == Lifecycle::Idle
+            && ((session.started_at.is_some() && session.current_turn_id == event.turn_id)
+                || registry.recent_results.iter().rev().find(|result| result.session_id == event.session_id)
+                    .is_some_and(|result| result.turn_id == event.turn_id))) { return; }
     let tools = registry.active_tools.entry(event.session_id.clone()).or_default();
     let session = registry.sessions.entry(event.session_id.clone()).or_insert_with(|| Session {
         id: event.session_id.clone(), project: project_of(&event.cwd), cwd: Some(event.cwd.clone()), lifecycle: Lifecycle::Idle,
@@ -218,8 +227,6 @@ fn apply_event(registry: &mut SessionRegistry, event: HookEvent) {
 
 // 所有领域状态写入都集中在这个事件入口；Registry 只负责索引和保留时间。
 fn reduce_session(session: &mut Session, tools: &mut Vec<ActiveTool>, event: HookEvent) -> Option<TurnResult> {
-    // Root Turn 结束后的迟到 Subagent 事件不能重新激活会话。
-    if event.agent_id.is_some() && session.lifecycle == Lifecycle::Idle { return None; }
     if !event.cwd.is_empty() { session.cwd = Some(event.cwd.clone()); session.project = project_of(&event.cwd); }
     if event.model.is_some() { session.model = event.model; }
     session.last_activity_at = event.observed_at;
@@ -256,7 +263,10 @@ fn reduce_session(session: &mut Session, tools: &mut Vec<ActiveTool>, event: Hoo
                     if let Some(id) = agent_id { update_agent(session, id, Some(Activity::Thinking), Attention::None, event.observed_at); }
                     else { session.attention = Attention::None; }
                 },
-                "PermissionRequest" => { if let Some(id) = agent_id { if let Some(agent) = session.agents.iter_mut().find(|agent| agent.id == id) { agent.attention = Attention::Permission; } } else { session.attention = Attention::Permission; } },
+                "PermissionRequest" => { if let Some(id) = agent_id {
+                    if let Some(agent) = session.agents.iter_mut().find(|agent| agent.id == id) { agent.attention = Attention::Permission; }
+                    else { update_agent(session, id, Some(Activity::Thinking), Attention::Permission, event.observed_at); }
+                } else { session.attention = Attention::Permission; } },
                 "PreCompact" => { if let Some(id) = agent_id { update_agent(session, id, Some(Activity::Compacting), Attention::None, event.observed_at); } else { session.root_activity = Activity::Compacting; session.attention = Attention::None; } },
                 "PostCompact" => { if let Some(id) = agent_id { update_agent(session, id, Some(Activity::Thinking), Attention::None, event.observed_at); } else { session.root_activity = Activity::Thinking; session.attention = Attention::None; } },
                 "SubagentStart" => { if let Some(id) = agent_id { update_agent(session, id, Some(Activity::Thinking), Attention::None, event.observed_at); } },
@@ -268,7 +278,11 @@ fn reduce_session(session: &mut Session, tools: &mut Vec<ActiveTool>, event: Hoo
             tools.retain(|tool| tool.agent_id.as_deref() != Some(id));
         },
         "Stop" | "Interrupt" if session.lifecycle == Lifecycle::Active => {
-            result = Some(TurnResult { kind: if event.hook_event_name == "Stop" { TurnResultKind::Completed } else { TurnResultKind::Interrupted }, session_id: session.id.clone(), turn_id: session.current_turn_id.clone().or(event.turn_id), finished_at: event.observed_at });
+            result = Some(TurnResult {
+                kind: if event.hook_event_name == "Stop" { TurnResultKind::Completed } else { TurnResultKind::Interrupted },
+                session_id: session.id.clone(), turn_id: session.current_turn_id.clone().or(event.turn_id), finished_at: event.observed_at,
+                project: session.project.clone(), model: session.model.clone(), started_at: session.started_at,
+            });
             tools.clear(); session.lifecycle = Lifecycle::Idle; session.attention = Attention::None;
         },
         _ => {},
@@ -421,5 +435,56 @@ mod tests {
         apply_event(&mut r, agent);
         assert_eq!(r.sessions["s"].lifecycle, Lifecycle::Idle);
         assert_eq!(r.recent_results.len(), 1);
+        cleanup_registry(&mut r, 2 + RESULT_RETENTION_MS + 1);
+        let mut later = tool("Bash", "later", 2 + RESULT_RETENTION_MS + 2); later.agent_id = Some("a".into());
+        apply_event(&mut r, later);
+        assert_eq!(r.sessions["s"].lifecycle, Lifecycle::Idle);
+        assert!(r.recent_results.is_empty());
+    }
+    #[test]
+    fn agent_tool_can_restore_session_on_late_attach() {
+        let mut r = SessionRegistry::default();
+        let mut agent = tool("Bash", "agent-tool", 10); agent.agent_id = Some("worker".into());
+        apply_event(&mut r, agent);
+        assert_eq!(r.sessions["s"].lifecycle, Lifecycle::Active);
+        assert_eq!(r.sessions["s"].activity, Some(Activity::Executing));
+        assert_eq!(r.sessions["s"].agents[0].activity, Some(Activity::Working));
+        let mut r = SessionRegistry::default();
+        let mut started = event("SubagentStart", 10); started.agent_id = Some("worker".into());
+        apply_event(&mut r, started);
+        assert_eq!(r.sessions["s"].lifecycle, Lifecycle::Active);
+        assert_eq!(r.sessions["s"].agents[0].activity, Some(Activity::Thinking));
+    }
+    #[test]
+    fn agent_permission_late_attach_does_not_replace_root_activity() {
+        let mut r = SessionRegistry::default();
+        let mut permission = event("PermissionRequest", 10); permission.agent_id = Some("worker".into());
+        apply_event(&mut r, permission);
+        assert_eq!(r.sessions["s"].lifecycle, Lifecycle::Active);
+        assert_eq!(r.sessions["s"].activity, Some(Activity::Thinking));
+        assert_eq!(r.sessions["s"].agents[0].attention, Attention::Permission);
+        let mut bash = tool("Bash", "root", 11); bash.agent_id = None;
+        apply_event(&mut r, bash);
+        let mut permission = event("PermissionRequest", 12); permission.agent_id = Some("worker".into());
+        apply_event(&mut r, permission);
+        assert_eq!(r.sessions["s"].activity, Some(Activity::Executing));
+    }
+    #[test]
+    fn root_results_capture_context_without_session_end_duplication() {
+        for ending in ["Stop", "Interrupt"] {
+            let mut r = SessionRegistry::default();
+            let mut prompt = event("UserPromptSubmit", 10); prompt.model = Some("sol".into());
+            apply_event(&mut r, prompt);
+            apply_event(&mut r, event("PermissionRequest", 11));
+            assert_eq!(r.sessions["s"].activity, Some(Activity::Thinking));
+            apply_event(&mut r, event(ending, 12));
+            let result = &r.recent_results[0];
+            assert_eq!(result.kind, if ending == "Stop" { TurnResultKind::Completed } else { TurnResultKind::Interrupted });
+            assert_eq!(result.project.as_deref(), Some("Demo"));
+            assert_eq!(result.model.as_deref(), Some("sol"));
+            assert_eq!(result.started_at, Some(10));
+            apply_event(&mut r, event("SessionEnd", 13));
+            assert_eq!(r.recent_results.len(), 1);
+        }
     }
 }
