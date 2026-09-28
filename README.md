@@ -14,6 +14,8 @@ Codex 未安装在默认位置时，可在托盘图标右键菜单中选择“�
 
 ## 开发
 
+状态系统的事件映射、展示优先级和展开交互见 [状态系统与事件流](docs/state-machine.md)。
+
 需要 Node.js、Rust、Windows WebView2 和 Tauri 所需的 Windows 编译工具。
 
 ```powershell

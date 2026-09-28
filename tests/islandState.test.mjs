@@ -1,89 +1,69 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getActivityLabel, newerActivity, selectIsland } from "../src/islandState.ts";
-
-const now = 1_000_000;
-const session = (state, id = state, extra = {}) => ({
-  id, project: id, cwd: null, state, currentCommand: null, startedAt: now - 1_000,
-  lastActivityAt: now, completedAt: state === "completed" ? now : null,
-  model: null, agents: [], ...extra,
+import { deriveIslandPresentation, newerActivity, resultKey } from "../src/islandState.ts";
+import { reduceInteraction } from "../src/islandInteraction.ts";
+const now = 20_000;
+const usage = (remainingPercent) => ({ fiveHour: { remainingPercent, resetsAt: null }, weekly: null, updatedAt: 0 });
+const session = (id, activity = "thinking", attention = "none", agents = []) => ({ id, project: id, cwd: null, lifecycle: "active", activity, attention, currentCommand: null, startedAt: 1, lastActivityAt: now, model: null, currentTurnId: "t", agents });
+const result = (kind = "completed", finishedAt = now) => ({ kind, sessionId: "s", turnId: "t", finishedAt });
+const snapshot = (sessions = [], recentResults = [], updatedAt = 1) => ({ sessions, recentResults, updatedAt });
+const derive = (sessions = [], results = [], quota = null, tokens = {}, at = now) => deriveIslandPresentation(snapshot(sessions, results), quota, tokens, at);
+test("layout follows active sessions without frontend stale filtering", () => {
+  assert.equal(derive().layout, "minimal");
+  assert.equal(derive([session("s")]).layout, "single");
+  assert.equal(derive([session("s"), session("b")]).layout, "multi");
+  assert.equal(derive([session("s", "executing")], [], null, {}, now + 11 * 60_000).layout, "single");
 });
-const view = (sessions, usage = null, at = now) => selectIsland(sessions, usage, at);
-
-test("异步旧快照不能覆盖更新的 Hook 快照", () => {
-  const old = { sessions: [session("thinking")], updatedAt: 10 };
-  const recent = { sessions: [session("editing")], updatedAt: 11 };
-  assert.equal(newerActivity(old, recent), recent);
-  assert.equal(newerActivity(recent, old), recent);
+test("permission retains layout and wins over quota", () => {
+  const view = derive([session("s", "thinking", "permission"), session("b")], [], usage(0));
+  assert.equal(view.layout, "multi");
+  assert.equal(view.attention, "permission");
+  assert.equal(view.compactLabel, "等待审批");
+  assert.equal(derive([], [], usage(0)).attention, "quota");
 });
-
-test("空会话与单会话状态", () => {
-  assert.deepEqual({ mode: view([]).mode, active: view([]).activeCount, orb: view([]).orb },
-    { mode: "minimal", active: 0, orb: { state: "breathing", speed: .65 } });
-  for (const [state, label, orb] of [
-    ["thinking", "Thinking...", "solving"], ["editing", "Editing...", "shaping"],
-    ["completed", "已完成", "breathing"],
-  ]) {
-    const result = view([session(state)]);
-    assert.equal(result.mode, "single-session");
-    assert.equal(result.label, label);
-    assert.equal(result.primary.id, state);
-    assert.equal(result.sessions.length, 1);
-    assert.equal(result.orb.state, orb);
+test("completed feedback and token states", () => {
+  const done = result(); const key = resultKey(done);
+  assert.equal(derive([], [done], null, { [key]: { status: "loading" } }).compactLabel, "已完成");
+  assert.equal(derive([], [done], null, { [key]: { status: "unavailable" } }).compactLabel, "已完成");
+  const ready = { status: "ready", taskTokens: 12_600, sessionTokens: 20_000, readyAt: now };
+  assert.equal(derive([], [done], null, { [key]: ready }).compactLabel, "完成 · 12.6k");
+  assert.equal(derive([], [done], null, { [key]: ready }, now + 2_700).feedback, "completed");
+  assert.equal(derive([], [done], null, {}, now + 3_001).layout, "minimal");
+});
+test("expanded result remains visible after the compact timeout and backend retention", () => {
+  const done = result(); const key = resultKey(done);
+  const ready = { status: "ready", taskTokens: 12_600, sessionTokens: 20_000, readyAt: now + 1_000 };
+  const held = deriveIslandPresentation(snapshot(), null, { [key]: ready }, now + 20_000, done);
+  assert.equal(held.compactLabel, "完成 · 12.6k");
+  assert.equal(held.showTokenSummary, true);
+  assert.equal(deriveIslandPresentation(snapshot(), null, { [key]: ready }, now + 20_000).layout, "minimal");
+});
+test("interruption and multi agent are distinct", () => {
+  assert.equal(derive([], [result("interrupted")]).compactLabel, "已中断");
+  const agents = ["a", "b"].map(id => ({ id, activity: "thinking", attention: "none", lastActivityAt: now }));
+  assert.equal(derive([session("s", "thinking", "none", agents)]).orb.state, "weaving");
+});
+test("each activity maps to its action orb and copy", () => {
+  const expected = { thinking: "solving", working: "working", searching: "searching", editing: "shaping", executing: "working", connecting: "connecting", compacting: "composing" };
+  for (const [activity, orb] of Object.entries(expected)) {
+    const view = derive([session("s", activity)]);
+    assert.equal(view.orb.state, orb);
+    assert.notEqual(view.compactLabel, "Codex");
   }
-  const waiting = view([session("waiting")]);
-  assert.equal(waiting.mode, "attention");
-  assert.equal(waiting.waitingCount, 1);
-  assert.deepEqual(waiting.orb, { state: "listening", speed: .75 });
 });
-
-test("并行会话及等待状态独立计数", () => {
-  const two = view([session("thinking", "a"), session("editing", "b")]);
-  assert.equal(two.mode, "multi-session");
-  assert.equal(two.activeCount, 2);
-  assert.equal(two.sessions.length, 2);
-  assert.deepEqual(two.orb, { state: "weaving", speed: 1 });
-  const three = view([session("thinking", "a"), session("editing", "b"), session("searching", "c")]);
-  assert.equal(three.activeCount, 3);
-  assert.equal(three.label, "3 个会话");
-  const mixed = view([session("thinking", "a"), session("waiting", "b")]);
-  assert.equal(mixed.mode, "attention");
-  assert.equal(mixed.activeCount, 1);
-  assert.equal(mixed.waitingCount, 1);
-  assert.equal(mixed.primary.id, "b");
+test("older snapshot cannot replace newer", () => {
+  const old = snapshot([], [], 1); const current = snapshot([session("s")], [], 2);
+  assert.equal(newerActivity(current, old), current);
 });
-
-test("额度耗尽、完成态超时和陈旧会话", () => {
-  const quota = { fiveHour: { remainingPercent: 0, resetsAt: null }, weekly: null, updatedAt: 1 };
-  const limited = view([session("working")], quota);
-  assert.equal(limited.mode, "attention");
-  assert.equal(limited.label, "额度已用尽");
-  assert.deepEqual(limited.orb, { state: "breathing", speed: .5 });
-  assert.equal(view([session("completed")], null, now + 3_001).mode, "minimal");
-  assert.equal(view([session("thinking", "a"), session("completed", "b")]).label, "1 运行 · 1 完成");
-  assert.equal(view([session("thinking", "old", { lastActivityAt: now - 600_001 })]).sessions.length, 0);
-  assert.equal(view([session("waiting", "old", { lastActivityAt: now - 600_001 })]).waitingCount, 1);
-});
-
-test("多个 Subagent 使用准确数量和 Orb", () => {
-  const agents = ["a", "b"].map(id => ({ id, state: "thinking", lastActivityAt: now }));
-  const result = view([session("working", "main", { agents })]);
-  assert.equal(result.label, "Agents...");
-  assert.equal(result.expandedLabel, "Working with agents...");
-  assert.deepEqual(result.orb, { state: "weaving", speed: 1 });
-});
-
-test("Compact 与 Expanded 文案映射", () => {
-  for (const [state, compact, expanded] of [
-    ["thinking", "Thinking...", "Thinking..."],
-    ["searching", "Searching...", "Searching..."],
-    ["editing", "Editing...", "Editing files..."],
-    ["running-command", "Running...", "Running command..."],
-    ["composing", "Compacting...", "Compacting context..."],
-    ["waiting", "等待审批", "等待审批"],
-    ["completed", "已完成", "任务已完成"],
-  ]) {
-    assert.equal(getActivityLabel(state, "compact"), compact);
-    assert.equal(getActivityLabel(state, "expanded"), expanded);
+test("interaction reducer handles normal and quick transitions", () => {
+  let state = "compact";
+  for (const [event, expected] of [["EXPAND", "expanding"], ["NATIVE_READY", "expanded"], ["COLLAPSE", "collapsing"], ["ANIMATION_END", "compact"]]) {
+    state = reduceInteraction(state, event); assert.equal(state, expected);
   }
+  state = reduceInteraction("expanding", "COLLAPSE");
+  assert.equal(state, "collapsing");
+  assert.equal(reduceInteraction(state, "EXPAND"), "expanding");
+  assert.equal(reduceInteraction("expanded", "EXPAND"), "expanded");
+  assert.equal(reduceInteraction("collapsing", "COLLAPSE_FAILED"), "expanded");
+  assert.equal(reduceInteraction("expanding", "EXPAND_FAILED"), "compact");
 });

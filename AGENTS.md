@@ -25,3 +25,12 @@
 - 遵循现有目录、命名和代码风格；业务文案与错误消息优先使用中文。
 - 保留错误信息，不用空 `catch`、伪造成功状态或吞掉 Hook 失败。
 - 排障时只读取必要字段，展示日志时不要泄露会话 ID、目录或其他私人内容。
+
+## 状态系统约束
+
+- 新增状态先确定其所属维度：Lifecycle、Activity、Attention、Result、Token、Presentation 或 Interaction；不得扩充万能状态枚举。
+- Activity 只表示 Codex 正在做什么；Attention 只表示用户是否需要操作；Result 只表示一个 Turn 的最终结果。Token Usage 属于 Turn Result，按 Session ID 和 Turn ID 查询，不得由 Session Activity 触发。
+- Rust 领域状态只经 Hook 事件 reducer 改变；Session 失效和清理规则只放在 Rust Registry。前端不重复判断 Session stale。
+- UI 展示优先级、状态文案、Activity 到 Orb 的映射集中在 `deriveIslandPresentation()`；App 只处理订阅、交互、窗口、拖动和渲染。
+- CSS 只消费领域与展示模型已有的状态维度，不创造新业务状态。布局与展开状态应同时保留。
+- 新增状态时同时补充 Rust 状态机测试与 TypeScript Presentation 测试。
