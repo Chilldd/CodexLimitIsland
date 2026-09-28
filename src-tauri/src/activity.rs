@@ -291,12 +291,17 @@ fn reduce_session(session: &mut Session, tools: &mut Vec<ActiveTool>, event: Hoo
     result
 }
 
+fn has_permission(session: &Session) -> bool {
+    session.attention == Attention::Permission
+        || session.agents.iter().any(|agent| agent.attention == Attention::Permission)
+}
+
 fn cleanup_registry(registry: &mut SessionRegistry, now: u64) -> bool {
     let before = registry.sessions.len();
     let result_count = registry.recent_results.len();
     registry.recent_results.retain(|result| now.saturating_sub(result.finished_at) <= RESULT_RETENTION_MS);
     registry.sessions.retain(|id, session| {
-        if session.attention == Attention::Permission || registry.active_tools.get(id).is_some_and(|tools| !tools.is_empty()) {
+        if has_permission(session) || registry.active_tools.get(id).is_some_and(|tools| !tools.is_empty()) {
             now.saturating_sub(session.last_activity_at) <= ACTIVE_AFTER_MS
         } else {
             now.saturating_sub(session.last_activity_at) <= STALE_AFTER_MS
@@ -364,6 +369,36 @@ mod tests {
         let mut post = event("PostToolUse", 6); post.tool_use_id = Some("shell".into());
         apply_event(&mut r, post);
         assert_eq!(r.sessions["s"].attention, Attention::None);
+    }
+    #[test]
+    fn permission_retention_covers_root_and_agent_without_active_tools() {
+        for agent_permission in [false, true] {
+            let mut r = SessionRegistry::default();
+            apply_event(&mut r, event("UserPromptSubmit", 1));
+            let mut permission = event("PermissionRequest", 2);
+            if agent_permission {
+                permission.agent_id = Some("worker".into());
+            }
+            apply_event(&mut r, permission);
+            assert!(r.active_tools.get("s").is_none_or(Vec::is_empty));
+            assert_eq!(r.sessions["s"].attention, if agent_permission { Attention::None } else { Attention::Permission });
+            assert!(has_permission(&r.sessions["s"]));
+            assert!(!cleanup_registry(&mut r, 2 + STALE_AFTER_MS + 1));
+            assert!(r.sessions.contains_key("s"));
+            assert!(cleanup_registry(&mut r, 2 + ACTIVE_AFTER_MS + 1));
+            assert!(!r.sessions.contains_key("s"));
+        }
+    }
+    #[test]
+    fn session_without_permission_or_active_tools_uses_stale_retention() {
+        let mut r = SessionRegistry::default();
+        apply_event(&mut r, event("UserPromptSubmit", 1));
+        assert!(!has_permission(&r.sessions["s"]));
+        assert!(r.active_tools.get("s").is_none_or(Vec::is_empty));
+        assert!(!cleanup_registry(&mut r, 1 + STALE_AFTER_MS));
+        assert!(r.sessions.contains_key("s"));
+        assert!(cleanup_registry(&mut r, 1 + STALE_AFTER_MS + 1));
+        assert!(!r.sessions.contains_key("s"));
     }
     #[test]
     fn results_and_session_end_are_distinct() {
