@@ -47,7 +47,7 @@ function App() {
   const nativeOperation = useRef<Promise<void>>(Promise.resolve());
   const collapseOperation = useRef<Promise<void> | null>(null);
   const pointerInside = useRef(false);
-  const compactSize = useRef({ width: 120, height: 40 });
+  const compactSize = useRef({ width: 100, height: 40 });
   const usageEventCount = useRef(0);
   const drag = useRef<{ pointerId: number; startX: number; windowX: number; minX: number; maxX: number; scale: number; moved: boolean } | null>(null);
   const pendingDrag = useRef<number | null>(null);
@@ -71,7 +71,7 @@ function App() {
   const navigationDisabled = !expanded || debugScenario !== null || openingSession !== null;
   const expandedHeight = Math.min(420, view.rowCount > 1 ? 164 + view.rowCount * 48 : view.showTokenSummary ? 204 : 154);
   expandedHeightRef.current = expandedHeight;
-  const compactWidth = view.layout === "minimal" ? 120 : 208;
+  const compactWidth = view.layout === "minimal" ? 100 : 192;
   const compactHeight = view.layout === "minimal" ? 40 : 42;
   compactSize.current = { width: compactWidth, height: compactHeight };
   useEffect(() => { if (debugEnabled) void import("./debugPresentation").then(module => setDebugNames(module.DEBUG_SCENARIOS)).catch(error => console.error("加载状态预览失败", error)); }, []);
