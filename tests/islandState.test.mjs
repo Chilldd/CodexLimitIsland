@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { deriveIslandPresentation, effectiveAttention, newerActivity, resultKey, sessionLabel } from "../src/islandState.ts";
-import { reduceInteraction } from "../src/islandInteraction.ts";
+import { reduceInteraction, shouldUseHeldResults } from "../src/islandInteraction.ts";
 const now = 20_000;
 const usage = (remainingPercent) => ({ fiveHour: { remainingPercent, resetsAt: null }, weekly: null, updatedAt: 0 });
 const session = (id, activity = "thinking", attention = "none", agents = [], lastActivityAt = now) => ({ id, project: id, cwd: null, lifecycle: "active", activity, attention, currentCommand: null, startedAt: 1, lastActivityAt, model: null, currentTurnId: "t", agents });
@@ -86,6 +86,18 @@ test("expanded results survive backend retention and compact timeout", () => {
   assert.equal(view.visibleResults.length, 2);
   assert.equal(view.nextUpdateAt, null);
   assert.equal(derive([], [], null, {}, now + 20_000).layout, "minimal");
+});
+test("held results affect expanded shape but not collapsing target", () => {
+  assert.deepEqual(["compact", "expanding", "expanded", "collapsing"].map(shouldUseHeldResults), [false, true, true, false]);
+  const done = result("completed", now - 20_000);
+  const expired = snapshot([], [done]);
+  const retained = [done];
+  const viewFor = (state, at) => deriveIslandPresentation(expired, null, {}, at, shouldUseHeldResults(state) ? retained : []);
+  assert.equal(viewFor("expanded", now).layout, "single");
+  assert.equal(viewFor("collapsing", now).layout, "minimal");
+  assert.equal(deriveIslandPresentation(expired, null, {}, now, retained).primaryResult.result, done);
+  const fresh = result("completed", now - 1_000);
+  assert.equal(deriveIslandPresentation(snapshot([], [fresh]), null, {}, now, shouldUseHeldResults("collapsing") ? [fresh] : []).layout, "single");
 });
 test("multi agent orb and activity orb mapping", () => {
   const agents = ["a", "b"].map(id => ({ id, activity: "thinking", attention: "none", lastActivityAt: now }));

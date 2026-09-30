@@ -6,6 +6,8 @@ mod diagnostics;
 mod hook_sender;
 mod settings;
 mod token_usage;
+#[cfg(windows)]
+mod window_frame;
 pub fn run_hook_sender() -> Result<(), String> {
     hook_sender::run()
 }
@@ -62,12 +64,6 @@ unsafe extern "system" {
 unsafe extern "system" {
     #[link_name = "SetWindowRgn"]
     fn set_window_rgn(hwnd: *mut std::ffi::c_void, region: *mut std::ffi::c_void, redraw: i32) -> i32;
-    #[link_name = "GetWindowLongPtrW"]
-    fn get_window_long_ptr(hwnd: *mut std::ffi::c_void, index: i32) -> isize;
-    #[link_name = "SetWindowLongPtrW"]
-    fn set_window_long_ptr(hwnd: *mut std::ffi::c_void, index: i32, value: isize) -> isize;
-    #[link_name = "SetWindowPos"]
-    fn set_window_pos(hwnd: *mut std::ffi::c_void, insert_after: *mut std::ffi::c_void, x: i32, y: i32, width: i32, height: i32, flags: u32) -> i32;
 }
 
 #[derive(Clone, Serialize)]
@@ -256,24 +252,7 @@ fn set_window_hit_region(window: tauri::WebviewWindow, width: f64, height: f64) 
 
 #[cfg(windows)]
 fn keep_window_borderless(window: &tauri::WebviewWindow) -> Result<(), String> {
-    const GWL_STYLE: i32 = -16;
-    const TITLE_BAR_STYLES: isize = 0x00c0_0000 | 0x0004_0000 | 0x0008_0000 | 0x0002_0000 | 0x0001_0000;
-    const REFRESH_FRAME: u32 = 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020;
-    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
-    let style = unsafe { get_window_long_ptr(hwnd.0, GWL_STYLE) };
-    if style == 0 {
-        return Err(format!("读取窗口样式失败：{}", io::Error::last_os_error()));
-    }
-    if style & TITLE_BAR_STYLES != 0 {
-        // 透明窗口在焦点或尺寸变化后可能重新显示原生标题栏；保留其余窗口样式。
-        if unsafe { set_window_long_ptr(hwnd.0, GWL_STYLE, style & !TITLE_BAR_STYLES) } == 0 {
-            return Err(format!("移除窗口标题栏失败：{}", io::Error::last_os_error()));
-        }
-    }
-    if unsafe { set_window_pos(hwnd.0, std::ptr::null_mut(), 0, 0, 0, 0, REFRESH_FRAME) } == 0 {
-        return Err(format!("刷新窗口边框失败：{}", io::Error::last_os_error()));
-    }
-    Ok(())
+    window_frame::refresh(window)
 }
 
 #[cfg(windows)]
@@ -480,6 +459,8 @@ pub fn run() {
             diagnostics::log("Hook 监听已启动", None);
             start_usage_listener(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
+                #[cfg(windows)]
+                window_frame::install(&window).map_err(io::Error::other)?;
                 if let Some(monitor) = window.primary_monitor()? {
                     let screen = monitor.size();
                     let origin = monitor.position();
@@ -490,8 +471,6 @@ pub fn run() {
                         origin.y + top,
                     ))?;
                 }
-                #[cfg(windows)]
-                keep_window_borderless(&window).map_err(io::Error::other)?;
             }
             Ok(())
         })

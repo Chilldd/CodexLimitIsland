@@ -2,7 +2,7 @@ import { resultKey, type Activity, type ActivitySnapshot, type Agent, type Sessi
 
 export const DEBUG_SCENARIOS = [
   "Idle", "Thinking", "Searching", "Editing", "Executing", "Connecting", "Compacting",
-  "Permission", "Agent Permission", "Completed Loading", "Completed Ready", "Interrupted",
+  "Permission", "Agent Permission", "Completed Loading", "Completed Ready", "Expired Completed Expanded", "Interrupted",
   "2 Active Sessions", "1 Active + 1 Completed", "2 Active + 1 Completed", "2 Completed",
   "Multi Agent", "Quota Exhausted", "Quota + Permission",
 ] as const;
@@ -26,6 +26,7 @@ export function createDebugScenario(name: DebugScenarioName, now: number): Debug
   if (name === "Permission" || name === "Quota + Permission") snapshot.sessions = [session("CodexLimitIsland", "executing", [], "permission")];
   if (name === "Agent Permission") snapshot.sessions = [session("OtherProject"), session("CodexLimitIsland", "executing", [agent("worker", "permission")])];
   if (name === "Completed Loading" || name === "Completed Ready" || name === "Interrupted") snapshot.recentResults = [result("CodexLimitIsland", name === "Interrupted" ? "interrupted" : "completed")];
+  if (name === "Expired Completed Expanded") snapshot.recentResults = [{ ...result("CodexLimitIsland"), finishedAt: now - 20_000 }];
   if (name === "2 Active Sessions" || name === "2 Active + 1 Completed") snapshot.sessions = [session("CodexLimitIsland"), session("OtherProject", "editing")];
   if (name === "1 Active + 1 Completed") snapshot.sessions = [session("CodexLimitIsland")];
   if (name === "1 Active + 1 Completed" || name === "2 Active + 1 Completed") snapshot.recentResults = [result("FinishedProject")];
@@ -34,7 +35,7 @@ export function createDebugScenario(name: DebugScenarioName, now: number): Debug
   if (name === "Quota Exhausted" || name === "Quota + Permission") usage.fiveHour = { remainingPercent: 0, resetsAt: null };
   for (const item of snapshot.recentResults) {
     if (item.kind !== "completed") continue;
-    tokens[resultKey(item)] = name === "Completed Loading" ? { status: "loading" } : { status: "ready", taskTokens: item.sessionId === "OtherProject" ? 8_300 : 12_648, sessionTokens: 20_000, readyAt: now };
+    tokens[resultKey(item)] = name === "Completed Loading" ? { status: "loading" } : { status: "ready", taskTokens: item.sessionId === "OtherProject" ? 8_300 : 12_648, sessionTokens: 20_000, readyAt: name === "Expired Completed Expanded" ? now - 20_000 : now };
   }
   return { snapshot, usage, tokens };
 }
