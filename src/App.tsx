@@ -27,6 +27,9 @@ function App() {
   const [activity, setActivity] = useState<ActivitySnapshot>(emptySnapshot);
   const [heldResults, setHeldResults] = useState<TurnResult[]>([]);
   const [usageError, setUsageError] = useState<string | null>(null);
+  const [navigationError, setNavigationError] = useState<string | null>(null);
+  const [openingSession, setOpeningSession] = useState<string | null>(null);
+  const navigationPending = useRef(false);
   const [debugNames, setDebugNames] = useState<readonly DebugScenarioName[]>([]);
   const [debugScenario, setDebugScenario] = useState<DebugScenario | null>(null);
   const [interaction, dispatchInteraction] = useReducer(reduceInteraction, "compact" as IslandInteractionState);
@@ -60,6 +63,8 @@ function App() {
   const displayUsage = debugScenario ? debugScenario.usage : usage;
   const displayTokens = debugScenario ? debugScenario.tokens : tokens;
   const view = useMemo(() => deriveIslandPresentation(displayActivity, displayUsage, displayTokens, now, debugScenario ? debugScenario.snapshot.recentResults : heldResults), [displayActivity, displayUsage, displayTokens, now, debugScenario, heldResults]);
+  const primarySessionId = view.primarySession?.id ?? view.primaryResult?.result.sessionId;
+  const navigationDisabled = !expanded || debugScenario !== null || openingSession !== null;
   const expandedHeight = Math.min(420, view.rowCount > 1 ? 164 + view.rowCount * 48 : view.showTokenSummary ? 204 : 154);
   expandedHeightRef.current = expandedHeight;
   const compactWidth = view.layout === "minimal" ? 120 : 224;
@@ -178,6 +183,19 @@ function App() {
   }
   function onEnter() { pointerInside.current = true; window.clearTimeout(leaveTimer.current); leaveTimer.current = undefined; }
   function onLeave() { pointerInside.current = false; scheduleCollapse(); }
+  async function openSession(sessionId: string) {
+    if (navigationPending.current || debugScenario || interactionRef.current !== "expanded") return;
+    navigationPending.current = true;
+    setOpeningSession(sessionId); setNavigationError(null);
+    try {
+      await invoke<void>("open_codex_session", { sessionId });
+      collapse();
+    } catch (error) {
+      setNavigationError(String(error));
+    } finally {
+      navigationPending.current = false; setOpeningSession(null);
+    }
+  }
   function animateDrag() {
     const target = dragTarget.current; const current = dragCurrent.current;
     if (target == null || current == null) return;
@@ -211,15 +229,15 @@ function App() {
     pendingDrag.current = null; drag.current = null; event.currentTarget.releasePointerCapture(event.pointerId);
     window.setTimeout(() => { suppressClick.current = false; }, 0);
   }
-  return <><main className={`island layout-${view.layout} ${expanded ? "expanded" : ""}`} data-attention={view.attention} data-feedback={view.feedback} style={expanded ? { height: expandedHeight } : undefined} onMouseEnter={onEnter} onMouseLeave={onLeave} onPointerDown={event => void onPointerDown(event)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onTransitionEnd={event => { if (event.target === event.currentTarget && event.propertyName === "height" && interactionRef.current === "collapsing") void finishCollapse(); }} onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } expanded ? collapse() : void expand(); }} aria-label={view.layout === "minimal" ? `Codex 五小时剩余额度 ${percent(displayUsage?.fiveHour ?? null)}` : view.compactLabel}>
+  return <><main className={`island layout-${view.layout} ${expanded ? "expanded" : ""}`} data-attention={view.attention} data-feedback={view.feedback} style={expanded ? { height: expandedHeight } : undefined} onMouseEnter={onEnter} onMouseLeave={onLeave} onPointerDown={event => void onPointerDown(event)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onTransitionEnd={event => { if (event.target === event.currentTarget && event.propertyName === "height" && interactionRef.current === "collapsing") void finishCollapse(); }} onClick={event => { if ((event.target as Element).closest("button")) return; if (suppressClick.current) { suppressClick.current = false; return; } expanded ? collapse() : void expand(); }} aria-label={view.layout === "minimal" ? `Codex 五小时剩余额度 ${percent(displayUsage?.fiveHour ?? null)}` : view.compactLabel}>
     <div className="island-content"><div className="orb-wrap"><ThinkingOrb className="orb-small" state={view.orb.state} size={20} theme="dark" speed={view.orb.speed} paused={reducedMotion || (expanded && !orbTransitioning)} aria-hidden="true" /><ThinkingOrb className="orb-large" state={view.orb.state} size={64} theme="dark" speed={view.orb.speed} paused={reducedMotion || (!expanded && !orbTransitioning)} aria-hidden="true" /></div>
       <div className="minimal-copy"><span>5 小时</span><strong className={tone(displayUsage?.fiveHour ?? null)}>{percent(displayUsage?.fiveHour ?? null)}</strong></div>
       <div className="compact-copy"><span className="activity-label" key={view.compactLabel} title={view.compactLabel}>{view.compactLabel}</span>{view.layout === "single" && view.primarySession && <time>{elapsed(view.primarySession.startedAt, now)}</time>}<span className="compact-limit">5 小时 <strong className={tone(displayUsage?.fiveHour ?? null)}>{percent(displayUsage?.fiveHour ?? null)}</strong></span></div>
-      <div className="expanded-copy"><div className="activity-head"><span key={view.expandedTitle} title={view.expandedTitle}>{view.expandedTitle}</span>{view.layout !== "multi" && <><strong title={view.primarySession?.project ?? view.primaryResult?.result.project ?? ""}>{view.primarySession?.project || view.primaryResult?.result.project || "Codex"}</strong><small>{view.expandedSubtitle}</small></>}</div>
+      <div className="expanded-copy"><div className="activity-head"><span key={view.expandedTitle} title={view.expandedTitle}>{view.expandedTitle}</span>{view.layout !== "multi" && <>{primarySessionId ? <button type="button" className="session-link" disabled={navigationDisabled} tabIndex={expanded ? 0 : -1} title="在 Codex App 中打开此对话" onClick={event => { event.stopPropagation(); void openSession(primarySessionId); }}><strong>{view.primarySession?.project || view.primaryResult?.result.project || "Codex 会话"}</strong><span aria-hidden="true">↗</span></button> : <strong>Codex</strong>}<small>{openingSession === primarySessionId ? "正在打开 Codex App…" : view.expandedSubtitle}</small></>}</div>
         {view.showTokenSummary && view.token?.status === "ready" && <div className="token-summary"><div><span>本次任务</span><strong>{exactTokens(view.token.taskTokens)}</strong></div><div><span>当前会话</span><strong>{exactTokens(view.token.sessionTokens)}</strong></div></div>}
-        {view.rowCount > 1 && <div className="session-list">{view.sessions.map(session => <div className="session-row" key={`session:${session.id}`}><span className="session-dot" data-attention={effectiveAttention(session)} /><div className="session-text"><strong title={session.project ?? session.cwd ?? ""}>{session.project || session.cwd?.split(/[\\/]/).pop() || "Codex 会话"}</strong><small>{sessionLabel(session)}{session.agents.filter(agent => agent.activity !== null).length > 1 ? ` · ${session.agents.filter(agent => agent.activity !== null).length} 个子代理` : ""}</small></div><time>{elapsed(session.startedAt, now)}</time></div>)}{view.visibleResults.map(({ result, label }) => <div className="session-row" key={`result:${resultKey(result)}`}><span className="session-dot" data-feedback={result.kind} /><div className="session-text"><strong title={result.project ?? ""}>{result.project || "Codex 会话"}</strong><small>{label}</small></div><time>{elapsed(result.startedAt, result.finishedAt)}</time></div>)}</div>}
+        {view.rowCount > 1 && <div className="session-list">{view.sessions.map(session => <button type="button" className="session-row" key={`session:${session.id}`} disabled={navigationDisabled} tabIndex={expanded ? 0 : -1} title="在 Codex App 中打开此对话" onClick={event => { event.stopPropagation(); void openSession(session.id); }}><span className="session-dot" data-attention={effectiveAttention(session)} /><span className="session-text"><strong title={session.project ?? session.cwd ?? ""}>{session.project || session.cwd?.split(/[\\/]/).pop() || "Codex 会话"}</strong><small>{sessionLabel(session)}{session.agents.filter(agent => agent.activity !== null).length > 1 ? ` · ${session.agents.filter(agent => agent.activity !== null).length} 个子代理` : ""}</small></span><time>{openingSession === session.id ? "打开中…" : elapsed(session.startedAt, now)}</time><span className="session-open-icon" aria-hidden="true">↗</span></button>)}{view.visibleResults.map(({ result, label }) => <button type="button" className="session-row" key={`result:${resultKey(result)}`} disabled={navigationDisabled} tabIndex={expanded ? 0 : -1} title="在 Codex App 中打开此对话" onClick={event => { event.stopPropagation(); void openSession(result.sessionId); }}><span className="session-dot" data-feedback={result.kind} /><span className="session-text"><strong title={result.project ?? ""}>{result.project || "Codex 会话"}</strong><small>{label}</small></span><time>{openingSession === result.sessionId ? "打开中…" : elapsed(result.startedAt, result.finishedAt)}</time><span className="session-open-icon" aria-hidden="true">↗</span></button>)}</div>}
         <div className="usage-rows"><UsageRow label="5 小时额度" value={displayUsage?.fiveHour ?? null} /><UsageRow label="每周额度" value={displayUsage?.weekly ?? null} /></div>
-        <div className="meta"><span>{view.primarySession?.model || view.primaryResult?.result.model || (usageError ? "额度读取失败" : displayUsage ? "额度已更新" : "正在连接 Codex")}</span><time>{view.primarySession ? elapsed(view.primarySession.startedAt, now) : view.primaryResult ? elapsed(view.primaryResult.result.startedAt, view.primaryResult.result.finishedAt) : displayUsage ? new Date(displayUsage.updatedAt * 1000).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : ""}</time></div>
+        <div className="meta">{navigationError ? <span className="navigation-error" role="alert" title={navigationError}>{navigationError}</span> : <><span>{view.primarySession?.model || view.primaryResult?.result.model || (usageError ? "额度读取失败" : displayUsage ? "额度已更新" : "正在连接 Codex")}</span><time>{view.primarySession ? elapsed(view.primarySession.startedAt, now) : view.primaryResult ? elapsed(view.primaryResult.result.startedAt, view.primaryResult.result.finishedAt) : displayUsage ? new Date(displayUsage.updatedAt * 1000).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : ""}</time></>}</div>
       </div></div></main>{debugEnabled && <aside className="debug-switcher"><button onClick={() => selectDebug(null)}>Live</button>{debugNames.map(name => <button key={name} onClick={() => selectDebug(name)}>{name}</button>)}</aside>}</>;
 }
 export default App;

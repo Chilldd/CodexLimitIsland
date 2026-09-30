@@ -1,6 +1,7 @@
 mod activity;
 mod app_paths;
 mod codex_runtime;
+mod codex_navigation;
 mod diagnostics;
 mod hook_sender;
 mod settings;
@@ -426,7 +427,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|_, _, _| {}))
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![read_limits, activity::read_activity, token_usage::read_token_usage, set_window_hit_region])
+        .invoke_handler(tauri::generate_handler![read_limits, activity::read_activity, token_usage::read_token_usage, codex_navigation::open_codex_session, set_window_hit_region])
         .on_window_event(|window, event| {
             #[cfg(windows)]
             if window.label() == "main" && matches!(event, tauri::WindowEvent::Focused(_)) {
