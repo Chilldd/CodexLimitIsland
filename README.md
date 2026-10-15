@@ -1,78 +1,276 @@
-# Codex 限额岛
+# Codex Limit Island (限额灵动岛)
 
-Tauri + React 悬浮组件，显示 Codex 的五小时与每周剩余额度和重置时间。目前仅提供 Windows 安装包；macOS/Linux 的运行与打包尚未验证。
+<p align="center">
+  <img src="docs/images/compact-pill.png" alt="Codex Limit Island Pill" height="38" />
+</p>
 
-## 取数方式
+<p align="center">
+  <strong>专为 OpenAI Codex 打造的轻量级桌面悬浮灵动岛</strong><br>
+  实时监控 5 小时与每周额度配额、重置倒计时，无缝联动 Codex 会话活动状态与 Token 统计。
+</p>
 
-Rust 后端优先使用用户在托盘菜单中设置的 Codex 程序路径（该文件不存在时回退自动查找）；否则在 Windows 优先查找 `%LOCALAPPDATA%\OpenAI\Codex\bin\<版本>\codex.exe`；在 macOS 优先查找常见的 `Codex.app/Contents/Resources/codex` 安装位置；其余情况从 `PATH` 查找 `codex`（Windows 为 `codex.exe`）。找到后启动 `app-server`，通过标准输入输出发送 `account/rateLimits/read`。使用 `windowDurationMins` 区分 300 分钟与 10080 分钟窗口，并计算 `100 - usedPercent`。程序不读取登录令牌；所选 Codex 程序需要已登录。
+<p align="center">
+  <img src="https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows&logoColor=white" alt="Platform" />
+  <img src="https://img.shields.io/badge/Framework-Tauri%202-FFC131?logo=tauri&logoColor=black" alt="Tauri 2" />
+  <img src="https://img.shields.io/badge/Frontend-React%2019%20%7C%20TS-61DAFB?logo=react&logoColor=black" alt="React 19" />
+  <img src="https://img.shields.io/badge/License-MIT-green" alt="License" />
+</p>
 
-Codex Hook 运行 `codexlimit --hook`（Windows 为 `codexlimit.exe --hook`），从标准输入读取 JSON 并 POST 到灵动岛监听的 `127.0.0.1:17321/api/codex/hook`；灵动岛尚未运行时会以 `--auto-start` 模式启动同一个程序，并在有限时间内重试当前事件。Rust 后端仅在内存中保存状态所需字段，并通过 Tauri 事件实时通知 React。Hook 命令配置在用户级 `~/.codex/hooks.json`，修改后需在 Codex 中重新信任并重启。
+---
 
-用户通过托盘明确点击“退出”后，Hook 不会再次自动唤醒灵动岛；`--auto-start` 启动前会再次检查退出标记且不会清除它。再次手动启动 Codex Limit Island 后，会清除标记并恢复 Hook 自动唤醒能力。应用自己的少量持久化状态位于 `~/.codex-limit-island/`。
+## 📸 界面预览
 
-退出标记无法读取时会拒绝自动启动；托盘退出时若无法保存标记，窗口会继续运行并提示修复权限后重试。手动启动时若无法清除标记，窗口仍可使用，但会提示自动唤醒尚未恢复。
+| 悬浮胶囊状态 (Compact) | 任务完成与 Token 统计 (Expanded) |
+| :---: | :---: |
+| <img src="docs/images/compact-pill.png" width="180" alt="悬浮胶囊状态" /> | <img src="docs/images/expanded-completed.png" width="380" alt="任务完成卡片" /> |
+| **实时思考与动作状态** | **多会话与子 Agent 协同** |
+| <img src="docs/images/expanded-thinking.png" width="380" alt="思考中" /> | <img src="docs/images/expanded-multi.png" width="380" alt="多会话运行" /> |
 
-Hook 仅在连接被拒绝或建连超时时尝试自动启动。HTTP 明确拒绝、无效响应或建连后的确认超时会返回错误；确认丢失时会说明事件可能已处理，避免盲目重发。
+---
 
-Codex 未安装在默认位置时，可在托盘图标右键菜单中选择“设置 Codex 程序路径…”指定 `codex.exe`；路径写入 `~/.codex-limit-island/config.json` 的 `codexPath`，选择“恢复默认路径”会删除该文件并回到自动查找。设置生效后会丢弃当前 Codex 连接并在下一次刷新时使用新路径。选定程序后先做一次自检：启动 `app-server` 并尝试读取额度，自检不通过则不保存并提示原因；程序能启动但额度读取失败（例如 Codex 未登录）时仍会保存并给出提示。
+## ✨ 核心特性
 
-## 开发
+- 📊 **额度实时掌控**：双环/双进度条清晰展示 Codex **5 小时窗口**与**每周窗口**的剩余额度百分比，精确计算额度重置倒计时。
+- 🏝️ **灵动岛轻盈交互**：默认以小巧的“药丸胶囊”悬浮置顶，轻触即可平滑展开详细卡片；支持全局自由拖拽与智能屏幕边缘贴边。
+- ⚡ **深度 Hook 联动**：深度接入 Codex 命令型 Hook，实时感知 Codex 会话的生命周期与具体行为（思考中、搜索代码、执行命令、等待审批、上下文压缩等），动态呈现呼吸 Orb 动效。
+- 🔢 **Token 消耗透视**：任务完成时自动统计本次任务（Turn）消耗的 Tokens 及当前会话累计 Tokens，使用情况一目了然。
+- 🛡️ **纯本地与零隐私泄露**：
+  - **不抓取、不存储**任何用户 API Key、登录令牌（Token）或对话提示词与代码输出；
+  - 仅在本地环回接口（`127.0.0.1`）通信，所有会话状态仅保留在本地内存，随用随析。
+- 🔌 **智能唤醒与退出尊重**：
+  - 在 Codex 触发任务时可自动按需拉起灵动岛；
+  - 当用户在系统托盘明确选择“退出”后，会记录退出意愿，后续不再随意唤醒打扰。
 
-状态系统的事件映射、展示优先级和展开交互见 [状态系统与事件流](docs/state-machine.md)。
+---
 
-安全基线整改及实际验收记录见 [P0-A 阶段报告](docs/p0a-acceptance.md)。
+## 🚀 快速上手
 
-需要 Node.js、Rust、Windows WebView2 和 Tauri 所需的 Windows 编译工具。
+### 1. 下载与安装
 
-```powershell
-npm.cmd install
-npm.cmd run tauri dev
+进入 [Releases](https://github.com/) 页面，下载最新的安装包：
+- **`Codex.Limit.Island-Setup.exe`**：双击即可完成安装并自动运行。
+
+> **环境说明**：目前灵动岛的原生窗口贴边、阴影与点击穿透针对 Windows 进行了深度适配与打包。macOS/Linux 架构预留了支持，待后续环境验证后开放打包。
+
+---
+
+### 2. 配置 Codex Hook（推荐）
+
+通过配置 Codex 命令型 Hook，灵动岛可以在后台实时感知 Codex 的运行状态、进度及 Token 消耗。
+
+1. 打开或创建当前用户的 Hook 配置文件：
+   - 路径：`%USERPROFILE%\.codex\hooks.json`（也可直接参考仓库根目录的 [hooks.example.json](hooks.example.json)）
+2. 填入如下真实 Hook 规则配置：
+
+```json
+{
+  "description": "Send Codex lifecycle events to Codex Limit Island over localhost.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codexlimit.exe --hook",
+            "timeout": 12
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codexlimit.exe --hook",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codexlimit.exe --hook",
+            "timeout": 12
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codexlimit.exe --hook",
+            "timeout": 12
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codexlimit.exe --hook",
+            "timeout": 12
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codexlimit.exe --hook",
+            "timeout": 12
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codexlimit.exe --hook",
+            "timeout": 12
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codexlimit.exe --hook",
+            "timeout": 12
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codexlimit.exe --hook",
+            "timeout": 12
+          }
+        ]
+      }
+    ]
+  }
+}
 ```
 
-构建安装包：
+> 💡 **路径提示**：
+> - 若 `codexlimit.exe` 在环境变量 `PATH` 中，直接写 `"command": "codexlimit.exe --hook"` 即可；
+> - 若未加入环境变量，可配置为安装后的绝对路径（例如：`"C:\\Users\\<你的用户名>\\AppData\\Local\\Programs\\Codex Limit Island\\codexlimit.exe --hook"` 或源码编译产物路径，注意 Windows 路径中的反斜杠必须写为双反斜杠 `\\\\`）。
+
+3. **信任命令**：保存后**重启 Codex App**。在 Codex 首次触发 Hook 时，界面会弹出命令确认提示，点击 **Trust**（信任）即可。
+
+---
+
+### 3. 日常使用
+
+- **展开/折叠**：鼠标左键点击灵动岛即可在紧凑态与展开态之间平滑切换。
+- **拖拽定位**：按住悬浮岛即可在屏幕顶部自由拖动位置，松开后自动贴紧顶边。
+- **托盘菜单**：
+  - 找不到 Codex 时可点击托盘右键菜单中的 **“设置 Codex 程序路径…”** 手动指定 `codex.exe`（内置连接自检）；
+  - 随时选择 **“恢复默认路径”**；
+  - 点击 **“退出”** 彻底关闭悬浮岛。
+
+---
+
+## 🏗️ 架构与数据流
+
+灵动岛采用双通道设计，将额度读取与会话动态严格解耦：
+
+```mermaid
+flowchart TD
+    subgraph Data Sources
+      CodexServer[Codex App Server] -- "account/rateLimits/read (stdio)" --> UsageModule[额度服务 (UsageService)]
+      CodexHook[Codex CLI Hook] -- "JSON POST 127.0.0.1:17321" --> HookModule[Hook 接收端 (Hook Server)]
+    end
+
+    subgraph Rust Core
+      UsageModule --> UsageSnapshot[额度快照]
+      HookModule --> Reducer[会话状态归约器]
+      Reducer --> Registry[会话注册表]
+      Registry --> ActivitySnapshot[活动快照]
+    end
+
+    subgraph UI Layer
+      UsageSnapshot --> Deriver[deriveIslandPresentation]
+      ActivitySnapshot --> Deriver
+      Deriver --> ReactUI[React 灵动岛组件]
+    end
+```
+
+- **额度服务**：启动 `codex.exe app-server`，通过标准输入输出调用 `account/rateLimits/read`，按 `windowDurationMins` 识别 5 小时与每周额度。
+- **Hook 状态流**：Hook 命令将事件发送给本地轻量 HTTP 端口，在内存中完成轻量状态推导，详见 [状态系统与事件流说明文档](docs/state-machine.md)。
+
+---
+
+## 🛠️ 参与开发
+
+欢迎提交 PR 或 Issue 一起完善项目！
+
+### 环境准备
+
+- **Node.js**：24.15+（推荐 Node.js 24 系列或 26+）
+- **Rust**：Stable 1.89+（需安装 `rustfmt` 和 `clippy`）
+- **Windows**：系统需安装 WebView2 Runtime（Windows 10/11 通常已自带）与 C++ 生成工具
+
+### 常用命令
 
 ```powershell
+# 1. 安装锁定依赖
+npm.cmd ci
+
+# 2. 启动前端 + Tauri 本地开发
+npm.cmd run tauri dev
+
+# 3. 运行完整质量检查（包含 ESLint 0 warning、类型检查、Vitest、Rust Clippy/Test）
+npm.cmd run check
+
+# 4. 单独代码格式化
+npm.cmd run format
+cargo fmt --manifest-path src-tauri/Cargo.toml
+
+# 5. 生成/检查 Rust 与 TypeScript 跨层契约
+npm.cmd run contracts:generate
+npm.cmd run contracts:check
+
+# 6. 构建 Windows NSIS 安装包
 npm.cmd run tauri build
 ```
 
-安装包输出在 `src-tauri\target\release\bundle\nsis`。窗口默认置顶；点击窗口查看详情。额度在启动、Root Stop、SessionEnd、app-server 通知时刷新，并在等待刷新通知约 30 秒超时后校准；事件刷新先等待约 3 秒并合并期间的通知，实际间隔还包含查询耗时。Hook 状态实时更新。
+打包完成后，安装包将输出至：`src-tauri/target/release/bundle/nsis/`。
 
-## 质量检查
+更多规范请参阅 [贡献指南 (CONTRIBUTING.md)](CONTRIBUTING.md)。
 
-使用 Node.js 24.15 以上的 24 系列或 Node.js 26 以上版本，以及包含 `rustfmt`、`clippy` 的 stable Rust（至少 1.89，实际最低版本还受锁定依赖约束）。本项目当前实测 Node.js 24.18。Windows PowerShell 使用 `npm.cmd`；其他平台可将命令中的 `npm.cmd` 换成 `npm`，但原生功能目前只在 Windows 开发环境验证。
+---
 
-```powershell
-npm.cmd ci
-npm.cmd run check
-```
+## 🔒 隐私与安全性保障
 
-`check` 依次验证 npm/Cargo/Tauri 版本、Prettier、ESLint、应用/配置/测试类型、前端构建、Vitest、Rust 格式、Clippy 和 Rust 单测，不构建安装包。单独运行可使用 `typecheck`、`lint`、`format:check`、`version:check`、`build`、`test`、`check:rust`；`npm.cmd run format` 和 `cargo fmt --manifest-path src-tauri/Cargo.toml` 分别修复前端与 Rust 格式。
+- **凭证安全**：灵动岛绝不读取、不转发、不记录用户的任何登录 Token 或 Session Cookie。
+- **内容安全**：Hook 接收端仅在内存提取操作类型（如当前命令名、工具类型），不持久化存储提示词（Prompt）、文件内容或工具执行输出。
+- **本地边界**：HTTP Hook 接收服务严格绑定在 `127.0.0.1:17321`，不暴露任何公网接口；设置了 1MiB 请求上限与严格超时。
 
-ESLint 启用推荐的 TypeScript 与 React Hooks 规则，要求 0 error、0 warning。测试已迁移为 TypeScript，由 Vitest 运行，`tsconfig.test.json` 直接检查测试类型；React hooks 与组件使用 jsdom 和 Testing Library，窗口时序使用可控 Promise 与假时钟。版本校验脚本也接受 Node 配置的类型检查。
+---
 
-`App.tsx` 负责组合；展示模型集中在 `islandState.ts`，订阅、结果保留、窗口、拖动和导航位于 `src/hooks/`，原生窗口队列由 `windowController.ts` 编排。Elapsed 的每秒刷新局限在文本组件，Result 到期使用一次性定时器。尺寸常量、CSS tokens、Rust 点击区和 Tauri 配置之间有契约测试。P1 的验证和浏览器对照见 [P1 阶段报告](docs/p1-acceptance.md)。
+## 📄 开源许可证
 
-Tauri 版本读取根目录 `package.json`，Cargo package 版本仍需同步维护。`version:check` 检查三处配置，Rust 单测另行检查 Tauri 编译上下文中实际解析的版本。
-
-`.github/workflows/check.yml` 在 Windows runner 上安装锁定依赖并执行相同的 `check`。隐藏 Win32 窗口测试会照常执行并使失败反馈到 CI；它们不替代真实窗口、动画与 Hook 信任链路验收。
-
-## 后端与跨层契约
-
-Rust 入口 `src-tauri/src/lib.rs` 负责初始化和组装；`hook/` 接收与转发事件，`activity/` 管理领域状态，`usage/` 管理额度连接与调度，`window/` 管理原生窗口，`tray.rs` 和 `launch.rs` 分别管理托盘与启动。Registry、额度连接和 Token 文件索引通过 Tauri Managed State 共享。
-
-跨层类型由 Rust 的 Serialize/ts-rs 定义生成到 `src/generated/contracts.ts`：
-
-```powershell
-npm.cmd run contracts:generate
-npm.cmd run contracts:check
-```
-
-生成文件直接用于前端，不能手工修改；`check` 中的 Rust 单测也检查契约漂移。生成器只属于开发依赖，64 位数字保持既有 JSON number 形式。
-
-应用日志位于 `~/.codex-limit-island/logs/codexlimit.log`，最大 1MiB，最多 2 份轮转备份。GUI 和 Hook sender 共用 OS 文件锁，隐私详情只保留受控错误类别；日志不可写时启动界面会提示。旧 exe 同目录日志不会自动迁移或删除。
-
-本机 Hook HTTP 保持原协议，使用 8 个工作线程、16 个排队连接；超额连接返回 503，非法请求返回 400。请求体最大 1MiB、请求头最大 16KiB，读取使用 1 秒整体期限。没有新增鉴权或修改已信任命令，资源限制不等同于同用户进程隔离。
-
-Token 文件按 Session 缓存并增量读取，旧 Turn 首次查询仍可回扫；路径/文件变化会失效重查。前端 Token 缓存保留展开结果和在途查询，引用释放且查询完成后清理；拖动只保留一个在途原生请求与最新目标，DPI、边界和运动算法保持原规则。
-
-两阶段的验证、性能量化及未执行的真实联调见 [P2 报告](docs/p2-acceptance.md) 和 [P3 报告](docs/p3-acceptance.md)。
+本项目基于 [MIT 许可证](LICENSE) 开源。欢迎自由使用、修改与分发。
