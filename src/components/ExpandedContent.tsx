@@ -36,6 +36,20 @@ export function ExpandedContent({ view, navigation }: { view: IslandPresentation
             </small>
           </>
         )}
+        <div className="meta">
+          {navigation.error ? (
+            <span className="navigation-error" role="alert" title={navigation.error}>
+              {navigation.error}
+            </span>
+          ) : (
+            meta && (
+              <>
+                <span>{meta.label}</span>
+                {meta.elapsed ? <Elapsed {...meta.elapsed} /> : <time>{meta.time}</time>}
+              </>
+            )
+          )}
+        </div>
       </div>
       {view.showTokenSummary && view.token?.status === "ready" && (
         <div className="token-summary">
@@ -57,20 +71,6 @@ export function ExpandedContent({ view, navigation }: { view: IslandPresentation
         </div>
       )}
       <UsagePanel rows={view.usageRows} />
-      <div className="meta">
-        {navigation.error ? (
-          <span className="navigation-error" role="alert" title={navigation.error}>
-            {navigation.error}
-          </span>
-        ) : (
-          meta && (
-            <>
-              <span>{meta.label}</span>
-              {meta.elapsed ? <Elapsed {...meta.elapsed} /> : <time>{meta.time}</time>}
-            </>
-          )
-        )}
-      </div>
     </div>
   );
 }

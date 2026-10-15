@@ -134,8 +134,7 @@ button {
 }
 .activity-head,
 .session-list,
-.usage-rows,
-.meta {
+.usage-rows {
   opacity: 0;
   transform: translateY(7px);
   transition:
@@ -144,8 +143,7 @@ button {
 }
 .expanded .activity-head,
 .expanded .session-list,
-.expanded .usage-rows,
-.expanded .meta {
+.expanded .usage-rows {
   opacity: 1;
   transform: none;
 }
@@ -157,9 +155,6 @@ button {
 }
 .expanded .usage-rows {
   transition-delay: 0.13s;
-}
-.expanded .meta {
-  transition-delay: 0.17s;
 }
 .usage-fill {
   height: 100%;
@@ -410,7 +405,7 @@ button {
   align-content: center;
 }
 .compact-copy:has(time) {
-  grid-template-columns: minmax(0, max-content) max-content minmax(max-content, 1fr);
+  grid-template-columns: minmax(0, 1fr) 5ch max-content;
 }
 .compact-copy .activity-label,
 .compact-copy time,
@@ -511,6 +506,7 @@ button {
 .compact-copy time {
   min-width: 0;
   text-align: right;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
   color: #8a9799;
   font-size: 12px;
@@ -540,13 +536,18 @@ button {
 }
 .activity-head {
   position: absolute;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto;
+  row-gap: 2px;
+  column-gap: 12px;
   min-width: 0;
   left: 78px;
-  right: 112px;
+  right: 18px;
   top: 15px;
+}
+.activity-head > :not(.meta) {
+  grid-column: 1;
 }
 .activity-head > span {
   animation: status-arrive 0.22s var(--morph-ease) both;
@@ -568,20 +569,16 @@ button {
   font-size: 12px;
 }
 .meta {
-  position: absolute;
+  grid-column: 2;
+  grid-row: 1 / -1;
   display: flex;
+  flex-direction: column-reverse;
   justify-content: space-between;
+  align-items: flex-end;
   color: #79898c;
   font-size: 10px;
   white-space: nowrap;
-  left: auto;
-  right: 18px;
-  top: 17px;
-  bottom: auto;
   max-width: 110px;
-  flex-direction: column-reverse;
-  align-items: flex-end;
-  gap: 5px;
 }
 .meta > span {
   max-width: 100%;
