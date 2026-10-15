@@ -71,18 +71,22 @@ fn install_on_hwnd(hwnd: Hwnd) -> Result<(), String> {
 }
 
 pub(super) fn refresh(window: &tauri::WebviewWindow) -> Result<(), String> {
-    const REFRESH_FRAME: u32 = 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020;
     let hwnd = window.hwnd().map_err(|error| error.to_string())?;
-    let style = unsafe { get_window_long_ptr(hwnd.0, GWL_STYLE) };
+    refresh_on_hwnd(hwnd.0)
+}
+
+fn refresh_on_hwnd(hwnd: Hwnd) -> Result<(), String> {
+    const REFRESH_FRAME: u32 = 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020;
+    let style = unsafe { get_window_long_ptr(hwnd, GWL_STYLE) };
     if style == 0 {
         return Err(format!("读取窗口样式失败：{}", io::Error::last_os_error()));
     }
-    if style & TITLE_BAR_STYLES as isize != 0 {
-        if unsafe { set_window_long_ptr(hwnd.0, GWL_STYLE, style & !(TITLE_BAR_STYLES as isize)) } == 0 {
-            return Err(format!("移除窗口标题栏失败：{}", io::Error::last_os_error()));
-        }
+    // 消息处理器已过滤标题栏样式；样式未变时不强制重算窗口区域，避免干扰展开动画。
+    if style & TITLE_BAR_STYLES as isize == 0 { return Ok(()); }
+    if unsafe { set_window_long_ptr(hwnd, GWL_STYLE, style & !(TITLE_BAR_STYLES as isize)) } == 0 {
+        return Err(format!("移除窗口标题栏失败：{}", io::Error::last_os_error()));
     }
-    if unsafe { set_window_pos(hwnd.0, std::ptr::null_mut(), 0, 0, 0, 0, REFRESH_FRAME) } == 0 {
+    if unsafe { set_window_pos(hwnd, std::ptr::null_mut(), 0, 0, 0, 0, REFRESH_FRAME) } == 0 {
         return Err(format!("刷新窗口边框失败：{}", io::Error::last_os_error()));
     }
     Ok(())
@@ -93,6 +97,7 @@ mod tests {
     use super::*;
 
     const GWL_EXSTYLE: i32 = -20;
+    const WM_NCCALCSIZE: u32 = 0x0083;
     const OBSERVER_ID: usize = 2;
     const CUSTOM_MESSAGE: u32 = 0x8000 + 77;
     const FORWARDED_RESULT: isize = 0x713;
@@ -118,6 +123,7 @@ mod tests {
         activations: [Option<(usize, isize)>; 2],
         activation_count: usize,
         ncpaint_count: usize,
+        nc_calc_size_count: usize,
         custom_message: Option<(usize, isize)>,
         destroyed: bool,
         borderless_removed_before_destroy: bool,
@@ -127,6 +133,10 @@ mod tests {
         // FFI 回调只记录观测结果，断言留在测试线程中，避免 panic 跨越原生边界。
         let observations = data as *mut Observations;
         match message {
+            WM_NCCALCSIZE => {
+                unsafe { (*observations).nc_calc_size_count += 1; }
+                unsafe { def_subclass_proc(hwnd, message, wparam, lparam) }
+            }
             WM_NCACTIVATE => {
                 unsafe {
                     let state = &mut *observations;
@@ -196,6 +206,28 @@ mod tests {
                 eprintln!("清理隐藏测试窗口失败：{}", io::Error::last_os_error());
             }
         }
+    }
+
+    #[test]
+    fn refreshes_frame_only_when_title_bar_styles_change() {
+        let window = TestWindow::new();
+        let before = window.observations.nc_calc_size_count;
+        refresh_on_hwnd(window.hwnd).expect("刷新无边框窗口失败");
+        assert_eq!(window.observations.nc_calc_size_count, before, "无标题栏时不应重算窗口区域");
+
+        // 暂时移除过滤器，模拟待修复的原生标题栏样式。
+        assert_ne!(unsafe { remove_window_subclass(window.hwnd, borderless_proc, SUBCLASS_ID) }, 0);
+        let style = unsafe { get_window_long_ptr(window.hwnd, GWL_STYLE) };
+        assert_ne!(unsafe { set_window_long_ptr(window.hwnd, GWL_STYLE, style | TITLE_BAR_STYLES as isize) }, 0);
+        install_on_hwnd(window.hwnd).expect("恢复无边框消息处理失败");
+
+        let before_repair = window.observations.nc_calc_size_count;
+        refresh_on_hwnd(window.hwnd).expect("修复标题栏样式失败");
+        assert_eq!(unsafe { get_window_long_ptr(window.hwnd, GWL_STYLE) } & TITLE_BAR_STYLES as isize, 0);
+        assert!(window.observations.nc_calc_size_count > before_repair, "修复样式后应刷新窗口区域");
+        let after_repair = window.observations.nc_calc_size_count;
+        refresh_on_hwnd(window.hwnd).expect("重复刷新无边框窗口失败");
+        assert_eq!(window.observations.nc_calc_size_count, after_repair, "样式恢复后不应重复刷新");
     }
 
     #[test]

@@ -44,6 +44,7 @@ function App() {
   const expandedHeightRef = useRef(154);
   const regionWidth = useRef(0);
   const nativeLarge = useRef(false);
+  const nativeExpandedHeight = useRef<number | null>(null);
   const nativeOperation = useRef<Promise<void>>(Promise.resolve());
   const collapseOperation = useRef<Promise<void> | null>(null);
   const pointerInside = useRef(false);
@@ -97,7 +98,20 @@ function App() {
   useEffect(() => { if (liveView.nextUpdateAt == null) return; const timer = window.setTimeout(() => setNow(Date.now()), Math.max(0, liveView.nextUpdateAt - Date.now())); return () => window.clearTimeout(timer); }, [liveView.nextUpdateAt]);
   useEffect(() => { setNow(Date.now()); }, [tokens]);
   useEffect(() => () => { window.clearTimeout(leaveTimer.current); window.clearTimeout(shrinkTimer.current); window.clearTimeout(orbTimer.current); window.clearTimeout(regionTimer.current); window.cancelAnimationFrame(dragFrame.current ?? 0); }, []);
-  useEffect(() => { if (expanded) void runNative(async () => { if (interactionRef.current !== "expanded") return; await appWindow.setSize(new LogicalSize(390, debugEnabled ? 550 : expandedHeight + 4)); await setHitRegion(384, expandedHeight + 4); regionWidth.current = 384; }).catch(error => console.error("窗口尺寸调整失败", error)); }, [expanded, expandedHeight]);
+  useEffect(() => {
+    if (!expanded) return;
+    void runNative(async () => {
+      if (interactionRef.current !== "expanded") return;
+      const height = expandedHeightRef.current;
+      // 展开前已准备好原生窗口；只有内容高度改变时才再次调整，避免打断起步动画。
+      if (nativeExpandedHeight.current === height) return;
+      nativeExpandedHeight.current = null;
+      await appWindow.setSize(new LogicalSize(390, debugEnabled ? 550 : height + 4));
+      await setHitRegion(384, height + 4);
+      regionWidth.current = 384;
+      nativeExpandedHeight.current = height;
+    }).catch(error => console.error("窗口尺寸调整失败", error));
+  }, [expanded, expandedHeight]);
   useEffect(() => {
     if (expanded || nativeLarge.current) return;
     window.clearTimeout(regionTimer.current);
@@ -129,6 +143,7 @@ function App() {
       try {
         if (nativeLarge.current) await appWindow.setSize(new LogicalSize(390, debugEnabled ? 550 : 42));
         nativeLarge.current = false;
+        nativeExpandedHeight.current = null;
         if (interactionRef.current !== "collapsing") return;
         const { width, height } = compactSize.current;
         await setHitRegion(width, height);
@@ -161,10 +176,12 @@ function App() {
       if (interactionRef.current !== "expanding") return;
       try {
         const height = expandedHeightRef.current;
+        nativeExpandedHeight.current = null;
         await appWindow.setSize(new LogicalSize(390, debugEnabled ? 550 : height + 4));
         nativeLarge.current = true;
         if ((interactionRef.current as IslandInteractionState) !== "expanding") return;
         await setHitRegion(384, height + 4); regionWidth.current = 384;
+        nativeExpandedHeight.current = height;
         if ((interactionRef.current as IslandInteractionState) !== "expanding") return;
         animateOrbHandoff(); transition("NATIVE_READY");
         if (!pointerInside.current && leaveTimer.current === undefined) scheduleCollapse();
