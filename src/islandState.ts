@@ -1,18 +1,43 @@
-export type Activity = "thinking" | "working" | "searching" | "editing" | "executing" | "connecting" | "compacting";
-export type Attention = "none" | "permission";
-export type Lifecycle = "idle" | "active";
-export type TurnResultKind = "completed" | "interrupted";
-export type TurnResult = { kind: TurnResultKind; sessionId: string; turnId: string | null; finishedAt: number; project: string | null; model: string | null; startedAt: number | null };
-export type TokenUsageState = { status: "loading" } | { status: "ready"; taskTokens: number | null; sessionTokens: number | null; readyAt: number } | { status: "unavailable" };
-export type OrbState = "working" | "searching" | "solving" | "connecting" | "weaving" | "composing" | "breathing" | "shaping";
-export type LimitWindow = { remainingPercent: number; resetsAt: number | null };
-export type UsageSnapshot = { fiveHour: LimitWindow | null; weekly: LimitWindow | null; updatedAt: number };
-export type Agent = { id: string; activity: Activity | null; attention: Attention; lastActivityAt: number };
-export type Session = { id: string; project: string | null; cwd: string | null; lifecycle: Lifecycle; activity: Activity | null; attention: Attention; currentCommand: string | null; startedAt: number | null; lastActivityAt: number; model: string | null; currentTurnId: string | null; agents: Agent[] };
-export type ActivitySnapshot = { sessions: Session[]; recentResults: TurnResult[]; updatedAt: number };
-export function newerActivity(current: ActivitySnapshot, next: ActivitySnapshot): ActivitySnapshot { return next.updatedAt >= current.updatedAt ? next : current; }
-export function resultKey(result: TurnResult): string { return `${result.sessionId}:${result.turnId ?? `legacy-${result.finishedAt}`}`; }
-export function effectiveAttention(session: Session): Attention { return session.attention === "permission" || session.agents.some(agent => agent.attention === "permission") ? "permission" : "none"; }
+import { percent, tone, resetText } from "./domain/format";
+
+import type {
+  Activity,
+  Attention,
+  TurnResultKind,
+  TurnResult,
+  UsageSnapshot,
+  Session,
+  ActivitySnapshot,
+} from "./generated/contracts";
+export type {
+  Activity,
+  Attention,
+  Lifecycle,
+  TurnResultKind,
+  TurnResult,
+  LimitWindow,
+  UsageSnapshot,
+  Agent,
+  Session,
+  ActivitySnapshot,
+} from "./generated/contracts";
+export type TokenUsageState =
+  | { status: "loading" }
+  | { status: "ready"; taskTokens: number | null; sessionTokens: number | null; readyAt: number }
+  | { status: "unavailable" };
+export type OrbState =
+  "working" | "searching" | "solving" | "connecting" | "weaving" | "composing" | "breathing" | "shaping";
+export function newerActivity(current: ActivitySnapshot, next: ActivitySnapshot): ActivitySnapshot {
+  return next.updatedAt >= current.updatedAt ? next : current;
+}
+export function resultKey(result: TurnResult): string {
+  return `${result.sessionId}:${result.turnId ?? `legacy-${result.finishedAt}`}`;
+}
+export function effectiveAttention(session: Session): Attention {
+  return session.attention === "permission" || session.agents.some((agent) => agent.attention === "permission")
+    ? "permission"
+    : "none";
+}
 const RESULT_DISPLAY_MS = 3_000;
 const TOKEN_READY_DISPLAY_MS = 2_800;
 const copy: Record<Activity, { compact: string; expanded: string }> = {
@@ -25,13 +50,40 @@ const copy: Record<Activity, { compact: string; expanded: string }> = {
   compacting: { compact: "Compacting...", expanded: "Compacting context..." },
 };
 const orb: Record<Activity, { state: OrbState; speed: number }> = {
-  thinking: { state: "solving", speed: 1 }, working: { state: "working", speed: 1 }, searching: { state: "searching", speed: 1.1 },
-  editing: { state: "shaping", speed: 1 }, executing: { state: "working", speed: 1.15 }, connecting: { state: "connecting", speed: 1 }, compacting: { state: "composing", speed: 1 },
+  thinking: { state: "solving", speed: 1 },
+  working: { state: "working", speed: 1 },
+  searching: { state: "searching", speed: 1.1 },
+  editing: { state: "shaping", speed: 1 },
+  executing: { state: "working", speed: 1.15 },
+  connecting: { state: "connecting", speed: 1 },
+  compacting: { state: "composing", speed: 1 },
 };
-const idleOrb = { state: "breathing" as const, speed: .65 };
-const compactTokens = (value: number) => value >= 1000 ? `${(value / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(value);
-export function sessionLabel(session: Session): string { return effectiveAttention(session) === "permission" ? "等待审批" : copy[session.activity ?? "thinking"].expanded; }
+const idleOrb = { state: "breathing" as const, speed: 0.65 };
+const compactTokens = (value: number) =>
+  value >= 1000 ? `${(value / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(value);
+export function sessionLabel(session: Session): string {
+  return effectiveAttention(session) === "permission" ? "等待审批" : copy[session.activity ?? "thinking"].expanded;
+}
 export type ResultPresentation = { result: TurnResult; token?: TokenUsageState; label: string };
+export type ElapsedView = { from: number | null; to: number | null };
+export type SessionRowView = {
+  key: string;
+  sessionId: string;
+  title: string;
+  tooltip: string;
+  subtitle: string;
+  attention?: Attention;
+  feedback?: TurnResultKind;
+  elapsed: ElapsedView;
+};
+export type UsageRowView = {
+  label: string;
+  tone: ReturnType<typeof tone>;
+  percent: string;
+  width: string;
+  reset: string;
+};
+export type MetaView = { label: string; elapsed?: ElapsedView; time?: string };
 export type IslandPresentation = {
   layout: "minimal" | "single" | "multi";
   attention: "none" | "permission" | "quota";
@@ -48,34 +100,70 @@ export type IslandPresentation = {
   token?: TokenUsageState;
   showTokenSummary: boolean;
   nextUpdateAt: number | null;
+  headline: { sessionId?: string; title: string; subtitle: string };
+  rows: SessionRowView[];
+  meta: MetaView | null;
+  usageRows: UsageRowView[];
+  compactUsage: { tone: ReturnType<typeof tone>; percent: string };
+  compactElapsed: ElapsedView | null;
+  ariaLabel: string;
 };
 function resultLabel(result: TurnResult, token?: TokenUsageState): string {
   if (result.kind === "interrupted") return "任务已中断";
-  return token?.status === "ready" && token.taskTokens != null ? `任务完成 · ${token.taskTokens.toLocaleString("zh-CN")} tokens` : "任务已完成";
+  return token?.status === "ready" && token.taskTokens != null
+    ? `任务完成 · ${token.taskTokens.toLocaleString("zh-CN")} tokens`
+    : "任务已完成";
 }
-export function deriveIslandPresentation(snapshot: ActivitySnapshot, usage: UsageSnapshot | null, tokens: Record<string, TokenUsageState>, now: number, heldResults: TurnResult[] = []): IslandPresentation {
-  const sessions = snapshot.sessions.filter(session => session.lifecycle === "active").sort((a, b) =>
-    Number(effectiveAttention(b) === "permission") - Number(effectiveAttention(a) === "permission") || b.lastActivityAt - a.lastActivityAt || a.id.localeCompare(b.id));
+export function deriveIslandPresentation(
+  snapshot: ActivitySnapshot,
+  usage: UsageSnapshot | null,
+  tokens: Record<string, TokenUsageState>,
+  now: number,
+  heldResults: TurnResult[] = [],
+  usageFailed = false,
+): IslandPresentation {
+  const sessions = snapshot.sessions
+    .filter((session) => session.lifecycle === "active")
+    .sort(
+      (a, b) =>
+        Number(effectiveAttention(b) === "permission") - Number(effectiveAttention(a) === "permission") ||
+        b.lastActivityAt - a.lastActivityAt ||
+        a.id.localeCompare(b.id),
+    );
   const primarySession = sessions[0];
-  const permission = sessions.some(session => effectiveAttention(session) === "permission");
+  const permission = sessions.some((session) => effectiveAttention(session) === "permission");
   const quota = usage?.fiveHour?.remainingPercent === 0 || usage?.weekly?.remainingPercent === 0;
   const heldKeys = new Set(heldResults.map(resultKey));
-  const byKey = new Map(snapshot.recentResults.map(result => [resultKey(result), result]));
-  heldResults.forEach(result => byKey.set(resultKey(result), result));
+  const byKey = new Map(snapshot.recentResults.map((result) => [resultKey(result), result]));
+  heldResults.forEach((result) => byKey.set(resultKey(result), result));
   let nextUpdateAt: number | null = null;
-  const visibleResults = [...byKey.values()].filter(result => {
-    const token = tokens[resultKey(result)];
-    const expiresAt = Math.max(result.finishedAt + RESULT_DISPLAY_MS, token?.status === "ready" ? token.readyAt + TOKEN_READY_DISPLAY_MS : 0);
-    if (heldKeys.has(resultKey(result))) return true;
-    if (now >= expiresAt) return false;
-    nextUpdateAt = nextUpdateAt == null ? expiresAt : Math.min(nextUpdateAt, expiresAt);
-    return true;
-  }).sort((a, b) => b.finishedAt - a.finishedAt || a.sessionId.localeCompare(b.sessionId) || (a.turnId ?? "").localeCompare(b.turnId ?? ""))
-    .map(result => ({ result, token: tokens[resultKey(result)], label: resultLabel(result, tokens[resultKey(result)]) }));
+  const visibleResults = [...byKey.values()]
+    .filter((result) => {
+      const token = tokens[resultKey(result)];
+      const expiresAt = Math.max(
+        result.finishedAt + RESULT_DISPLAY_MS,
+        token?.status === "ready" ? token.readyAt + TOKEN_READY_DISPLAY_MS : 0,
+      );
+      if (heldKeys.has(resultKey(result))) return true;
+      if (now >= expiresAt) return false;
+      nextUpdateAt = nextUpdateAt == null ? expiresAt : Math.min(nextUpdateAt, expiresAt);
+      return true;
+    })
+    .sort(
+      (a, b) =>
+        b.finishedAt - a.finishedAt ||
+        a.sessionId.localeCompare(b.sessionId) ||
+        (a.turnId ?? "").localeCompare(b.turnId ?? ""),
+    )
+    .map((result) => ({
+      result,
+      token: tokens[resultKey(result)],
+      label: resultLabel(result, tokens[resultKey(result)]),
+    }));
   const primaryResult = visibleResults[0];
   const token = primaryResult?.token;
   const rowCount = sessions.length + visibleResults.length;
-  const activeAgents = primarySession?.agents.filter(agent => agent.activity !== null).length ?? 0;
+  const activeAgents = primarySession?.agents.filter((agent) => agent.activity !== null).length ?? 0;
   const layout = rowCount > 1 ? "multi" : rowCount === 1 || quota ? "single" : "minimal";
   const attention = permission ? "permission" : quota ? "quota" : "none";
   let feedback: IslandPresentation["feedback"] = "none";
@@ -89,9 +177,13 @@ export function deriveIslandPresentation(snapshot: ActivitySnapshot, usage: Usag
     expandedTitle = activeAgents > 1 ? "Working with agents..." : copy[activity].expanded;
     expandedSubtitle = activeAgents > 1 ? `${activeAgents} 个子代理` : "正在处理当前会话";
     selectedOrb = activeAgents > 1 || sessions.length > 1 ? { state: "weaving", speed: 1 } : orb[activity];
-    if (sessions.length > 1) { compactLabel = `${sessions.length} 个会话`; expandedTitle = `${sessions.length} 个会话运行中`; expandedSubtitle = `${sessions.length} 个会话`; }
+    if (sessions.length > 1) {
+      compactLabel = `${sessions.length} 个会话`;
+      expandedTitle = `${sessions.length} 个会话运行中`;
+      expandedSubtitle = `${sessions.length} 个会话`;
+    }
     if (visibleResults.length) {
-      const completed = visibleResults.filter(item => item.result.kind === "completed").length;
+      const completed = visibleResults.filter((item) => item.result.kind === "completed").length;
       const interrupted = visibleResults.length - completed;
       const suffix = interrupted ? `${visibleResults.length} 个结果` : `${completed} 完成`;
       compactLabel = `${sessions.length} 运行 · ${suffix}`;
@@ -102,11 +194,108 @@ export function deriveIslandPresentation(snapshot: ActivitySnapshot, usage: Usag
     compactLabel = primaryResult.result.kind === "completed" ? "已完成" : "已中断";
     expandedTitle = primaryResult.result.kind === "completed" ? "任务已完成" : "任务已中断";
     expandedSubtitle = "本次任务已结束";
-    if (primaryResult.result.kind === "completed" && token?.status === "ready" && token.taskTokens != null) compactLabel = `完成 · ${compactTokens(token.taskTokens)}`;
-    if (visibleResults.length > 1) { compactLabel = `${visibleResults.length} 个结果`; expandedTitle = `${visibleResults.length} 个最近结果`; }
+    if (primaryResult.result.kind === "completed" && token?.status === "ready" && token.taskTokens != null)
+      compactLabel = `完成 · ${compactTokens(token.taskTokens)}`;
+    if (visibleResults.length > 1) {
+      compactLabel = `${visibleResults.length} 个结果`;
+      expandedTitle = `${visibleResults.length} 个最近结果`;
+    }
   }
-  if (quota) { feedback = "none"; compactLabel = "额度已用尽"; expandedTitle = usage?.fiveHour?.remainingPercent === 0 ? "5 小时额度已用尽" : "每周额度已用尽"; }
-  if (permission) { feedback = "none"; compactLabel = "等待审批"; expandedTitle = "等待审批"; expandedSubtitle = "需要你的确认"; }
-  return { layout, attention, feedback, compactLabel, expandedTitle, expandedSubtitle, orb: selectedOrb, primarySession, primaryResult, sessions, visibleResults, rowCount, token,
-    showTokenSummary: rowCount === 1 && !quota && !permission && primaryResult?.result.kind === "completed" && token?.status === "ready", nextUpdateAt };
+  if (quota) {
+    feedback = "none";
+    compactLabel = "额度已用尽";
+    expandedTitle = usage?.fiveHour?.remainingPercent === 0 ? "5 小时额度已用尽" : "每周额度已用尽";
+  }
+  if (permission) {
+    feedback = "none";
+    compactLabel = "等待审批";
+    expandedTitle = "等待审批";
+    expandedSubtitle = "需要你的确认";
+  }
+  return {
+    layout,
+    attention,
+    feedback,
+    compactLabel,
+    expandedTitle,
+    expandedSubtitle,
+    orb: selectedOrb,
+    primarySession,
+    primaryResult,
+    sessions,
+    visibleResults,
+    rowCount,
+    token,
+    showTokenSummary:
+      rowCount === 1 &&
+      !quota &&
+      !permission &&
+      primaryResult?.result.kind === "completed" &&
+      token?.status === "ready",
+    nextUpdateAt,
+    headline: {
+      sessionId: primarySession?.id ?? primaryResult?.result.sessionId,
+      title: primarySession?.project || primaryResult?.result.project || "Codex 会话",
+      subtitle: expandedSubtitle,
+    },
+    rows: [
+      ...sessions.map((session): SessionRowView => {
+        const agents = session.agents.filter((agent) => agent.activity !== null).length;
+        return {
+          key: `session:${session.id}`,
+          sessionId: session.id,
+          title: session.project || session.cwd?.split(/[\\/]/).pop() || "Codex 会话",
+          tooltip: session.project ?? session.cwd ?? "",
+          subtitle: sessionLabel(session) + (agents > 1 ? ` · ${agents} 个子代理` : ""),
+          attention: effectiveAttention(session),
+          elapsed: { from: session.startedAt, to: null },
+        };
+      }),
+      ...visibleResults.map(({ result, label }): SessionRowView => ({
+        key: `result:${resultKey(result)}`,
+        sessionId: result.sessionId,
+        title: result.project || "Codex 会话",
+        tooltip: result.project ?? "",
+        subtitle: label,
+        feedback: result.kind,
+        elapsed: { from: result.startedAt, to: result.finishedAt },
+      })),
+    ],
+    meta:
+      layout === "multi"
+        ? null
+        : {
+            label:
+              primarySession?.model ||
+              primaryResult?.result.model ||
+              (usageFailed ? "额度读取失败" : usage ? "额度已更新" : "正在连接 Codex"),
+            ...(primarySession
+              ? { elapsed: { from: primarySession.startedAt, to: null } }
+              : primaryResult
+                ? { elapsed: { from: primaryResult.result.startedAt, to: primaryResult.result.finishedAt } }
+                : {
+                    time: usage
+                      ? new Date(usage.updatedAt * 1000).toLocaleTimeString("zh-CN", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "",
+                  }),
+          },
+    usageRows: (
+      [
+        ["5 小时额度", usage?.fiveHour ?? null],
+        ["每周额度", usage?.weekly ?? null],
+      ] as const
+    ).map(([label, value]) => ({
+      label,
+      tone: tone(value),
+      percent: percent(value),
+      width: `${value?.remainingPercent ?? 0}%`,
+      reset: resetText(value),
+    })),
+    compactUsage: { tone: tone(usage?.fiveHour ?? null), percent: percent(usage?.fiveHour ?? null) },
+    compactElapsed: layout === "single" && primarySession ? { from: primarySession.startedAt, to: null } : null,
+    ariaLabel: layout === "minimal" ? `Codex 五小时剩余额度 ${percent(usage?.fiveHour ?? null)}` : compactLabel,
+  };
 }

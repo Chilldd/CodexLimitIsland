@@ -1,0 +1,9 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+*.local/
+package-lock.json
+
+# Rust 类型生成器输出，格式由生成器固定并校验。
+src/generated/contracts.ts

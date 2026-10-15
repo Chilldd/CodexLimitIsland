@@ -1,6 +1,6 @@
 # 状态系统与事件流
 
-本文记录当前实现，修改状态规则时应同步更新本文和相关测试。主要代码位于 `src-tauri/src/activity.rs`、`src/islandState.ts`、`src/turnTokenUsage.ts`、`src/islandInteraction.ts` 和 `src/App.tsx`。
+本文记录当前实现，修改状态规则时应同步更新本文和相关测试。主要代码位于 `src-tauri/src/activity/`、`src/islandState.ts`、`src/islandInteraction.ts`、`src/windowController.ts`、`src/hooks/` 和 `src/components/`；`src/App.tsx` 负责组合。
 
 ```mermaid
 flowchart LR
@@ -27,11 +27,13 @@ flowchart LR
 | Presentation | TypeScript 纯函数 | `layout`、`attention`、`feedback`、文案、Orb 等 | 决定界面显示什么 |
 | Interaction | React reducer | `compact`、`expanding`、`expanded`、`collapsing` | 控制展开动画与原生窗口操作 |
 
-`ActivitySnapshot` 包含当前活动的 `sessions`、独立的 `recentResults` 和 `updatedAt`。`App.tsx` 通过 `activity-updated` 订阅更新，首次加载使用 `read_activity`；`newerActivity()` 拒绝较旧的快照。额度由另一条链路提供，不写入 Session Activity。
+`ActivitySnapshot` 包含当前活动的 `sessions`、独立的 `recentResults` 和 `updatedAt`。`useActivity()` 通过 `activity-updated` 订阅更新，首次加载使用 `read_activity`；`newerActivity()` 拒绝较旧的快照。`useUsage()` 保留事件与首次读取之间的版本守卫。两者都会清理卸载后才完成注册的监听。额度由另一条链路提供，不写入 Session Activity。
 
 ## Rust 事件归约
 
 HTTP Hook 只读取状态所需的元数据，`apply_event()` 检查 Turn 身份后调用 `reduce_session()`。会话字段、Agent、ActiveTool 和 Result 的业务转换集中在 reducer；Registry 管理索引、结果列表与清理时间。
+
+HTTP 204 仍在 Registry 更新和界面通知成功后返回；通知失败或响应丢失不回滚已更新的状态。sender 仅在尚未建连时尝试启动 GUI 并重试，建连后的确认丢失返回明确错误，不自动重发。同一已知 Turn 的 Root `UserPromptSubmit` 重发不会清空工具、重置开始时间或复活完成结果；同一仍在运行的 `tool_use_id` 重发不会更改工具前台顺序。缺少事件身份的旧 Hook 保留原兼容语义，不使用短时间去重推测事件是否重复。
 
 | Hook 事件 | Root Turn / Session 的转换 | Agent 事件的转换 |
 | --- | --- | --- |
@@ -54,9 +56,11 @@ ActiveTool、前台 Activity、当前命令是不同概念。`tool_activity()` �
 
 `deriveIslandPresentation()` 是纯函数，输入 ActivitySnapshot、额度、Token 状态、当前时间和展开期间保留的 Result 集合。它显式排序活动 Session（有效 Permission 优先，其次最近活动时间）和最近 Result（完成时间倒序），同时输出 `sessions` 与 `visibleResults`。Compact 主信息仍按 Permission、额度用尽、活动 Session、Result、Idle 的顺序选择；有活动 Session 和 Result 并存时，Compact 显示运行与完成数量，Expanded 同时列出活动行和结果行。`layout` 只取 `minimal`、`single`、`multi`；Attention 和 Feedback 独立存在。例如多 Session 等待审批仍是 `layout=multi, attention=permission`。`effectiveAttention()` 同时检查 Root 与 Agent，并统一用于排序、主 Session、行文案和黄色 Dot。Orb 表示动作，Ring / Feedback 表示审批、额度或完成反馈；Activity 到文案及 Orb 的映射也集中在此文件。
 
-紧凑态的 Result 默认展示 3 秒。Completed 的 Token 在准备好后还能展示约 2.8 秒；`loading` 与 `unavailable` 的主文案均为“已完成”，`ready` 且有本次 Token 时显示“完成 · 数量”。Expanded 结果行显示项目、结果和本次 Token；独立 Result 还能使用快照中的项目、模型与起始时间展示详情。展开期间，`App.tsx` 保留全部最近 Result，直到收起后才释放；即使 Rust 的 12 秒保留期结束，展开内容与已查询到的 Token 仍可显示。活跃 Session、Permission 和额度只影响 Compact 主信息及标题，不会从 `visibleResults` 中删除 Result。
+紧凑态的 Result 默认展示 3 秒。Completed 的 Token 在准备好后还能展示约 2.8 秒；`loading` 与 `unavailable` 的主文案均为“已完成”，`ready` 且有本次 Token 时显示“完成 · 数量”。Expanded 结果行显示项目、结果和本次 Token；独立 Result 还能使用快照中的项目、模型与起始时间展示详情。`useHeldResults()` 在 expanding、expanded 和 collapsing 期间保留最近 Result，到 compact 才释放；即使 Rust 的 12 秒保留期结束，展开内容与已查询到的 Token 仍可显示。活跃 Session、Permission 和额度只影响 Compact 主信息及标题，不会从 `visibleResults` 中删除 Result。
 
-`deriveIslandPresentation()` 提供下一个 Result 到期时间。React 只为该时间设置一次性 `setTimeout`；有活动 Session 时才每秒更新一次 elapsed。完全 Idle 且无待过期 Result 时不设周期定时器。Token 状态、Hook 快照和额度更新会触发即时推导，不需要常驻 250 毫秒轮询。
+`deriveIslandPresentation()` 同时输出类型化的 rows、headline、meta、usageRows、额度 tone 与 ARIA 文案；导航忙碌和错误由交互层管理。项目回退、子代理数量和状态文案不在 JSX 中重复推导。
+
+`useIslandPresentation()` 只为下一个 Result 到期时间设置一次性 `setTimeout`，结合事件观察时间和相关 Token readyAt 进行纯函数推导；没有保留结果时复用 Live 展示。Elapsed 的秒级刷新仅更新时间文本组件，不再触发整棵 App 或 Presentation。完全 Idle 且无待过期 Result 时不设周期定时器。Token 状态、Hook 快照和额度更新会触发即时推导，不需要常驻轮询。
 
 Token 查询由 Completed Turn Result 驱动，键优先使用 `sessionId:turnId`；旧 Hook 缺 Turn ID 时才使用完成时间构成回退键。`useTurnTokenUsage()` 在 300、800、800 毫秒后依次尝试查询，得到本次 Token 设为 `ready`，连续无数据或调用失败设为 `unavailable`。Interrupted Result 不查询 Token。
 
@@ -75,6 +79,24 @@ stateDiagram-v2
   collapsing --> expanding: EXPAND
 ```
 
-`App.tsx` 用 `useReducer` 维护交互阶段，拖动另行管理。原生窗口尺寸与点击区域操作通过队列串行执行，避免快速展开/收起时旧异步操作覆盖新状态。展开时先放大原生窗口并设置点击区域，再进入 `expanded`；收起时先播放 340 毫秒 Morph，再缩小原生窗口。鼠标离开岛区域后等待 260 毫秒才自动收起；在等待期间重新进入会取消计时。展开过程中鼠标离开也遵守同一个延迟。用户点击收起仍立即开始收起过程。
+`useInteractionMachine()` 用 `useReducer` 与同步 ref 维护交互阶段，拖动由 `useHorizontalDrag()` 管理。`useIslandWindow()` 将原生接口注入 `windowController.ts`，尺寸与点击区域操作通过队列串行执行，避免快速展开/收起时旧异步操作覆盖新状态。展开时先放大原生窗口并设置点击区域，再进入 `expanded`；收起时先播放 340 毫秒 Morph，再缩小原生窗口。鼠标离开岛区域后等待 260 毫秒才自动收起；在等待期间重新进入会取消计时。展开过程中鼠标离开也遵守同一个延迟。用户点击收起仍立即开始收起过程。
 
-DOM 同时保留 `layout-*` 与 `expanded` 类，并以 `data-attention`、`data-feedback` 表示其它维度。CSS 不自行推断业务状态。开发模式下通过 `?debugIsland` 打开 Presentation Playground；它构造 ActivitySnapshot、UsageSnapshot 和 TokenUsageState，仍经同一个 `deriveIslandPresentation()` 渲染，不影响 Release。Rust 状态机测试位于 `activity.rs`；Presentation 与 Interaction 测试位于 `tests/islandState.test.mjs`。真实窗口尺寸、Hit Region、Hook 信任与自动启动仍需在 Windows 运行环境中回归。
+`nativeOperations.ts` 提供可注入原生接口与计时器的执行函数。交互转换时递增队列版本；等待尺寸或点击区域完成后再次校验版本，组件卸载后停止后续操作，避免旧操作在状态绕回同名阶段时继续执行。收起优先响应高度过渡结束事件，兜底恢复原生窗口的延迟保持为 420 毫秒，减少动态效果时为 190 毫秒。开发构建仅额外允许 `384×550` 的 Debug 点击区域，Release 仍限制在 `100..=390 × 40..=424`。
+
+DOM 同时保留 `layout-*` 与 `expanded` 类，并以 `data-attention`、`data-feedback` 表示其它维度。CSS 不自行推断业务状态。`styles/tokens.css` 与 `domain/metrics.ts` 中的尺寸由跨文件测试约束：2px 根内边距将 96/200px 可见宽度对应到 100/204px 点击区；380px 展开宽度对应 384px 点击区，最大高度 420px 对应 424px 原生上限。64px Orb 画布仍以 scale(.75) 呈现为 48px。`useReducedMotion()` 订阅系统设置变化，并在卸载时清理。
+
+开发模式下通过 `?debugIsland` 打开 Presentation Playground；它构造 ActivitySnapshot、UsageSnapshot 和 TokenUsageState，仍经同一个 `deriveIslandPresentation()` 渲染，不影响真实额度和 Hook 数据。Rust 状态机测试位于 `activity/tests.rs`；Presentation 与 Interaction 测试位于 `tests/islandState.test.ts`、`tests/presentation.test.ts`。真实窗口尺寸、Hit Region、Hook 信任与自动启动仍需在 Windows 运行环境中回归。
+
+可控 Promise、假时钟、原生错误及卸载回归位于 `tests/nativeOperations.test.ts`、`tests/windowController.test.ts`；实际 React hooks、拖动、导航和 App 集成测试位于 `tests/hooks.test.tsx`。浏览器样式与动态回归记录见 [P1 阶段报告](p1-acceptance.md)。
+
+## P2/P3 数据与资源边界
+
+Hook 原始 JSON 由 sender 原样转发；已知事件类型只参与 deadline/日志判断，未来事件不会被 sender 静默过滤。server 在有界解析后转换为 `HookEventKind`，未知事件返回 400。`activity/registry.rs` 管理索引与清理，`reducer.rs` 负责 Session、Agent、Tool、Result 的转换。Registry 与 UsageService 均由 Managed State 持有，Hook 显式请求 UsageRefresher，刷新仍遵循 30 秒等待超时与事件合并规则。
+
+HTTP 正常处理顺序仍为更新 Registry、发送 activity-updated、按需请求额度刷新、返回 204。连接数由 8 个 worker 与 16 个排队位置限制，满载时返回 503。16KiB Header 与 1MiB Body 在同一 1 秒读取期限内完成；重复 Content-Length 和 Transfer-Encoding 明确拒绝。非法请求返回 400 后有限排空已到达数据，避免 Windows 未读请求体导致确认响应丢失。
+
+Rust TokenUsageReader 的索引以 Codex Home 和 Session ID 为键，最多 64 项；每文件保留 128 个已请求 Turn。相同 Session 查询共享锁与文件偏移，追加内容增量解析；新查询旧 Turn 时按需回扫。文件路径不存在、身份变化、截断或等长改写后失效重建。单行超过 1MiB 时有界跳过；缺少请求 Turn 数据继续返回 null，不用会话总量代替。
+
+`useTurnTokenUsage(results, heldResults)` 保留当前快照、展开保留结果及正在查询的键，完成后移除无引用项；卸载取消等待计时器并使晚到 Promise 失效。StrictMode 的上一轮查询不能覆盖当前任务。位置写入器让拖动至多一个请求在途，后续 RAF 仅替换最新目标；卸载不再提交尾随移动。
+
+`src/generated/contracts.ts` 来自 Rust 的 Serialize 与 ts-rs 派生，契约检查涵盖 camelCase、枚举字面量、null 和 JSON number；前端交互/展示类型继续由 TypeScript 定义。生成规则和隐私日志、并发/性能测试见 [P2](p2-acceptance.md)、[P3](p3-acceptance.md) 阶段报告。

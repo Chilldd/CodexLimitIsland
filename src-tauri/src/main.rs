@@ -10,7 +10,9 @@ fn main() {
             }
         }
         source => {
-            if codexlimit_lib::prepare_gui_launch(source) { codexlimit_lib::run(); }
+            if codexlimit_lib::prepare_gui_launch(source) {
+                codexlimit_lib::run();
+            }
         }
     }
 }

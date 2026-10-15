@@ -1,9 +1,13 @@
-use std::{env, fs, io, path::{Path, PathBuf}};
+use std::{
+    env, fs, io,
+    path::{Path, PathBuf},
+};
 
 pub fn app_home_dir() -> Result<PathBuf, String> {
-    let home = env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
-        .filter(|value| !value.is_empty())
-        .ok_or("无法确定用户 Home 目录")?;
+    app_home_from(env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }))
+}
+fn app_home_from(home: Option<std::ffi::OsString>) -> Result<PathBuf, String> {
+    let home = home.filter(|value| !value.is_empty()).ok_or("无法确定用户 Home 目录")?;
     Ok(PathBuf::from(home).join(".codex-limit-island"))
 }
 
@@ -42,18 +46,9 @@ pub fn clear_suppress_auto_start() -> Result<(), String> {
     clear_at(&suppress_auto_start_path()?).map_err(|_| "清除退出标记失败".into())
 }
 
-pub fn is_auto_start_suppressed() -> bool {
-    suppressed_or_false(suppress_auto_start_path().and_then(|path| is_suppressed_at(&path).map_err(|_| "读取退出标记失败".to_string())))
-}
-
-fn suppressed_or_false(result: Result<bool, String>) -> bool {
-    match result {
-        Ok(suppressed) => suppressed,
-        Err(_) => {
-            super::diagnostics::log("读取退出标记失败", None);
-            false
-        }
-    }
+pub fn is_auto_start_suppressed() -> Result<bool, String> {
+    suppress_auto_start_path()
+        .and_then(|path| is_suppressed_at(&path).map_err(|error| format!("读取退出标记失败：{:?}", error.kind())))
 }
 
 #[cfg(test)]
@@ -63,7 +58,11 @@ mod tests {
 
     #[test]
     fn marker_lifecycle_and_missing_marker() {
-        let dir = env::temp_dir().join(format!("codexlimit-path-test-{}-{}", std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+        let dir = env::temp_dir().join(format!(
+            "codexlimit-path-test-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
         let path = dir.join("nested").join("suppress-auto-start");
         assert!(!is_suppressed_at(&path).unwrap());
         clear_at(&path).unwrap();
@@ -78,7 +77,16 @@ mod tests {
     #[test]
     fn unreadable_marker_is_an_error() {
         assert!(is_suppressed_at(Path::new("invalid\0marker")).is_err());
-        assert!(!suppressed_or_false(Err("无法确定用户 Home 目录".into())));
-        assert!(!suppressed_or_false(Err("读取退出标记失败".into())));
+        assert!(suppress_at(Path::new("invalid\0marker")).is_err());
+        assert!(clear_at(Path::new("invalid\0marker")).is_err());
+    }
+    #[test]
+    fn missing_home_is_an_explicit_error() {
+        assert!(app_home_from(None).is_err());
+        assert!(app_home_from(Some("".into())).is_err());
+        assert_eq!(
+            app_home_from(Some("fake-home".into())).unwrap(),
+            PathBuf::from("fake-home/.codex-limit-island")
+        );
     }
 }

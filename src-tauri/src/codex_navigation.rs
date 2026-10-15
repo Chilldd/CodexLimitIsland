@@ -1,14 +1,6 @@
 fn session_uri(session_id: &str) -> Result<String, String> {
     // 链接只接受单个 UUID，避免 Hook 字段改变 URI 路径、查询参数或协议。
-    if session_id.len() != 36
-        || !session_id.bytes().enumerate().all(|(index, byte)| {
-            if matches!(index, 8 | 13 | 18 | 23) {
-                byte == b'-'
-            } else {
-                byte.is_ascii_hexdigit()
-            }
-        })
-    {
+    if !crate::session_id::is_uuid(session_id) {
         return Err("会话 ID 格式无效，无法打开 Codex 对话".into());
     }
     Ok(format!("codex://threads/{session_id}"))
@@ -41,9 +33,7 @@ fn shell_execute_result(code: isize) -> Result<(), String> {
         32 => "缺少程序所需的动态链接库",
         _ => "系统无法处理链接",
     };
-    Err(format!(
-        "打开 Codex 会话失败：{reason}（系统错误码：{code}）"
-    ))
+    Err(format!("打开 Codex 会话失败：{reason}（系统错误码：{code}）"))
 }
 
 #[cfg(windows)]
@@ -53,34 +43,25 @@ fn open_uri(uri: &str) -> Result<(), String> {
 
 #[cfg(windows)]
 mod windows {
-    use std::{ffi::c_void, ptr};
-
-    #[link(name = "shell32")]
-    unsafe extern "system" {
-        #[link_name = "ShellExecuteW"]
-        fn shell_execute(
-            hwnd: *mut c_void,
-            operation: *const u16,
-            file: *const u16,
-            parameters: *const u16,
-            directory: *const u16,
-            show_command: i32,
-        ) -> *mut c_void;
-    }
-
-    #[link(name = "ole32")]
-    unsafe extern "system" {
-        #[link_name = "CoInitializeEx"]
-        fn co_initialize(reserved: *mut c_void, flags: u32) -> i32;
-        #[link_name = "CoUninitialize"]
-        fn co_uninitialize();
-    }
+    use std::ptr;
+    use windows_sys::Win32::{
+        System::Com::{
+            CoInitializeEx as co_initialize, CoUninitialize as co_uninitialize, COINIT_APARTMENTTHREADED,
+            COINIT_DISABLE_OLE1DDE,
+        },
+        UI::{Shell::ShellExecuteW as shell_execute, WindowsAndMessaging::SW_SHOWNORMAL},
+    };
 
     struct ComApartment;
     impl ComApartment {
         fn initialize() -> Result<Self, String> {
             // Shell 扩展可能使用 COM；初始化和释放必须发生在同一个后台线程。
-            let code = unsafe { co_initialize(ptr::null_mut(), 0x2 | 0x4) }; // STA | DISABLE_OLE1DDE
+            let code = unsafe {
+                co_initialize(
+                    ptr::null_mut(),
+                    (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32,
+                )
+            }; // STA | DISABLE_OLE1DDE
             if code < 0 {
                 return Err(format!(
                     "初始化 Codex 链接处理失败（COM 错误码：0x{:08X}）",
@@ -109,7 +90,7 @@ mod windows {
                 file.as_ptr(),
                 ptr::null(),
                 ptr::null(),
-                1,
+                SW_SHOWNORMAL,
             )
         } as isize;
         super::shell_execute_result(code)

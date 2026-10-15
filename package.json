@@ -5,10 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
-    "test": "node --test tests/*.test.mjs",
+    "build": "npm run typecheck && vite build",
+    "test": "vitest run",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.node.json && tsc --project tsconfig.test.json",
+    "lint": "eslint src tests scripts vite.config.ts vitest.config.ts eslint.config.mjs --max-warnings 0",
+    "format": "prettier --write src tests scripts .github eslint.config.mjs vite.config.ts vitest.config.ts tsconfig.json tsconfig.node.json tsconfig.test.json package.json .prettierrc.json src-tauri/tauri.conf.json src-tauri/capabilities/default.json index.html",
+    "format:check": "prettier --check src tests scripts .github eslint.config.mjs vite.config.ts vitest.config.ts tsconfig.json tsconfig.node.json tsconfig.test.json package.json .prettierrc.json src-tauri/tauri.conf.json src-tauri/capabilities/default.json index.html",
+    "version:check": "node scripts/check-versions.ts",
+    "check:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --locked --manifest-path src-tauri/Cargo.toml --lib --quiet",
+    "check": "npm run version:check && npm run format:check && npm run lint && npm run build && npm test && npm run check:rust",
+    "contracts:generate": "node scripts/generate-contracts.ts",
+    "contracts:check": "node scripts/generate-contracts.ts --check"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -17,11 +26,25 @@
     "thinking-orbs": "^0.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@tauri-apps/cli": "^2",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "24.19.2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.2",
+    "eslint": "10.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.13.0",
+    "jsdom": "30.1.2",
+    "prettier": "3.9.10",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16"
+    "typescript-eslint": "8.71.2",
+    "vite": "^8.0.16",
+    "vitest": "5.0.4"
+  },
+  "engines": {
+    "node": "^24.15.0 || >=26"
   }
 }

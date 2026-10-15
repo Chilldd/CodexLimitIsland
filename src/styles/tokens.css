@@ -1,0 +1,20 @@
+:root {
+  font-family: "SF Pro Display", "Segoe UI Variable", "Segoe UI", sans-serif;
+  color: #f2f4f4;
+  background: transparent;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  --morph-duration: 340ms;
+  --morph-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --island-padding: 2px;
+  --minimal-width: 96px;
+  --compact-width: 200px;
+  --expanded-width: 380px;
+  --expanded-max-height: 420px;
+  --text: #f2f4f4;
+  --accent: #80dec8;
+  --warning: #e3c47e;
+  --critical: #e59b87;
+  --muted: #a0abad;
+  --completed: #7bd8bf;
+}
