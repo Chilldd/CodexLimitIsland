@@ -59,9 +59,24 @@ test("Meta, quota tones and ARIA copy preserve existing fallbacks", () => {
   expect(idle.meta?.label).toBe("额度读取失败");
   expect(idle.ariaLabel).toBe("Codex 五小时剩余额度 --");
   const normal = deriveIslandPresentation(snapshot(), usage(30), {}, 20_000);
-  expect(normal.compactUsage).toEqual({ tone: "warning", percent: "30%" });
+  expect(normal.compactUsage).toEqual({ tone: "warning", percent: "30%", label: "5h" });
   expect(normal.usageRows[0]).toMatchObject({ label: "5 小时额度", width: "30%", reset: "重置时间未知" });
   expect(normal.meta).toMatchObject({ label: "额度已更新" });
+  const weeklyOnly = deriveIslandPresentation(
+    snapshot(),
+    {
+      fiveHour: null,
+      weekly: { remainingPercent: 80, resetsAt: null },
+      updatedAt: 20,
+    },
+    {},
+    20_000,
+    [],
+    false,
+    "week",
+  );
+  expect(weeklyOnly.compactUsage).toEqual({ tone: "healthy", percent: "80%", label: "7d" });
+  expect(weeklyOnly.ariaLabel).toBe("Codex 每周剩余额度 80%");
   const result = done();
   const ready = { status: "ready" as const, taskTokens: 321, sessionTokens: 900, readyAt: 20_000 };
   const completed = deriveIslandPresentation(snapshot([], [result]), usage(), { [resultKey(result)]: ready }, 20_000);

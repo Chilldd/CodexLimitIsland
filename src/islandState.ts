@@ -8,6 +8,7 @@ import type {
   UsageSnapshot,
   Session,
   ActivitySnapshot,
+  LimitDisplayWindow,
 } from "./generated/contracts";
 export type {
   Activity,
@@ -20,6 +21,7 @@ export type {
   Agent,
   Session,
   ActivitySnapshot,
+  LimitDisplayWindow,
 } from "./generated/contracts";
 export type TokenUsageState =
   | { status: "loading" }
@@ -104,7 +106,7 @@ export type IslandPresentation = {
   rows: SessionRowView[];
   meta: MetaView | null;
   usageRows: UsageRowView[];
-  compactUsage: { tone: ReturnType<typeof tone>; percent: string };
+  compactUsage: { tone: ReturnType<typeof tone>; percent: string; label: string };
   compactElapsed: ElapsedView | null;
   ariaLabel: string;
 };
@@ -121,6 +123,7 @@ export function deriveIslandPresentation(
   now: number,
   heldResults: TurnResult[] = [],
   usageFailed = false,
+  limitWindow: LimitDisplayWindow = "fiveHour",
 ): IslandPresentation {
   const sessions = snapshot.sessions
     .filter((session) => session.lifecycle === "active")
@@ -204,7 +207,14 @@ export function deriveIslandPresentation(
   if (quota) {
     feedback = "none";
     compactLabel = "额度已用尽";
-    expandedTitle = usage?.fiveHour?.remainingPercent === 0 ? "5 小时额度已用尽" : "每周额度已用尽";
+    expandedTitle =
+      limitWindow === "week"
+        ? usage?.weekly?.remainingPercent === 0
+          ? "每周额度已用尽"
+          : "5 小时额度已用尽"
+        : usage?.fiveHour?.remainingPercent === 0
+          ? "5 小时额度已用尽"
+          : "每周额度已用尽";
   }
   if (permission) {
     feedback = "none";
@@ -212,6 +222,8 @@ export function deriveIslandPresentation(
     expandedTitle = "等待审批";
     expandedSubtitle = "需要你的确认";
   }
+  const targetLimit = limitWindow === "week" ? (usage?.weekly ?? null) : (usage?.fiveHour ?? null);
+  const limitLabel = limitWindow === "week" ? "7d" : "5h";
   return {
     layout,
     attention,
@@ -294,8 +306,15 @@ export function deriveIslandPresentation(
       width: `${value?.remainingPercent ?? 0}%`,
       reset: resetText(value),
     })),
-    compactUsage: { tone: tone(usage?.fiveHour ?? null), percent: percent(usage?.fiveHour ?? null) },
+    compactUsage: {
+      tone: tone(targetLimit),
+      percent: percent(targetLimit),
+      label: limitLabel,
+    },
     compactElapsed: layout === "single" && primarySession ? { from: primarySession.startedAt, to: null } : null,
-    ariaLabel: layout === "minimal" ? `Codex 五小时剩余额度 ${percent(usage?.fiveHour ?? null)}` : compactLabel,
+    ariaLabel:
+      layout === "minimal"
+        ? `Codex ${limitWindow === "week" ? "每周" : "五小时"}剩余额度 ${percent(targetLimit)}`
+        : compactLabel,
   };
 }

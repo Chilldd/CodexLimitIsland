@@ -9,6 +9,7 @@ import { useIslandPresentation } from "../src/hooks/useIslandPresentation";
 import { useSessionNavigation } from "../src/hooks/useSessionNavigation";
 import { useHorizontalDrag } from "../src/hooks/useHorizontalDrag";
 import { useTurnTokenUsage } from "../src/hooks/useTurnTokenUsage";
+import { useLimitWindow } from "../src/hooks/useLimitWindow";
 import { Elapsed } from "../src/components/Elapsed";
 import App from "../src/App";
 import { SessionRow } from "../src/components/SessionRow";
@@ -384,4 +385,20 @@ test("drag position preparation finishing after unmount cannot schedule native m
   await preparation;
   await vi.advanceTimersByTimeAsync(1000);
   expect(native.setPosition).not.toHaveBeenCalled();
+});
+
+test("useLimitWindow reads initial preference and updates upon limit-window-changed event", async () => {
+  bridge.invoke.mockResolvedValueOnce("fiveHour");
+  const hook = renderHook(useLimitWindow);
+  expect(hook.result.current).toBe("fiveHour");
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(hook.result.current).toBe("fiveHour");
+
+  act(() => listeners.get("limit-window-changed")!({ payload: "week" }));
+  expect(hook.result.current).toBe("week");
+
+  hook.unmount();
+  expect(listeners.has("limit-window-changed")).toBe(false);
 });

@@ -3,6 +3,7 @@ import {
   deriveIslandPresentation,
   resultKey,
   type ActivitySnapshot,
+  type LimitDisplayWindow,
   type TokenUsageState,
   type TurnResult,
   type UsageSnapshot,
@@ -17,6 +18,7 @@ export function useIslandPresentation(
   phase: IslandInteractionState,
   observedAt: number,
   usageFailed: boolean,
+  limitWindow: LimitDisplayWindow = "fiveHour",
 ) {
   const [deadlineTime, setDeadlineTime] = useState(() => Date.now());
   const tokenTime = [...snapshot.recentResults, ...held].reduce((latest, result) => {
@@ -25,12 +27,12 @@ export function useIslandPresentation(
   }, 0);
   const now = Math.max(deadlineTime, observedAt, tokenTime);
   const live = useMemo(
-    () => deriveIslandPresentation(snapshot, usage, tokens, now, [], usageFailed),
-    [snapshot, usage, tokens, now, usageFailed],
+    () => deriveIslandPresentation(snapshot, usage, tokens, now, [], usageFailed, limitWindow),
+    [snapshot, usage, tokens, now, usageFailed, limitWindow],
   );
   const retained = useMemo(
-    () => (held.length ? deriveIslandPresentation(snapshot, usage, tokens, now, held, usageFailed) : live),
-    [snapshot, usage, tokens, now, held, usageFailed, live],
+    () => (held.length ? deriveIslandPresentation(snapshot, usage, tokens, now, held, usageFailed, limitWindow) : live),
+    [snapshot, usage, tokens, now, held, usageFailed, limitWindow, live],
   );
   useEffect(() => {
     if (live.nextUpdateAt == null) return;

@@ -4,6 +4,7 @@ import { useUsage } from "./hooks/useUsage";
 import { useActivity } from "./hooks/useActivity";
 import { useReducedMotion } from "./hooks/useReducedMotion";
 import { useHeldResults } from "./hooks/useHeldResults";
+import { useLimitWindow } from "./hooks/useLimitWindow";
 import { useIslandPresentation } from "./hooks/useIslandPresentation";
 import { useInteractionMachine } from "./hooks/useInteractionMachine";
 import { useIslandWindow } from "./hooks/useIslandWindow";
@@ -22,6 +23,7 @@ function App({ native = nativeWindow }: { native?: IslandNativeWindow }) {
   const machine = useInteractionMachine();
   const debug = useDebugPresentation();
   const reducedMotion = useReducedMotion();
+  const limitWindow = useLimitWindow();
   const snapshot = debug.scenario?.snapshot ?? activity.snapshot;
   const held = useHeldResults(snapshot.recentResults, machine.phase);
   const tokens = useTurnTokenUsage(activity.snapshot.recentResults, debug.scenario ? [] : held);
@@ -33,6 +35,7 @@ function App({ native = nativeWindow }: { native?: IslandNativeWindow }) {
     machine.phase,
     Math.max(activity.observedAt, usage.observedAt, debug.observedAt),
     usage.error !== null,
+    limitWindow,
   );
   const height = expandedHeight(view.rowCount, view.showTokenSummary);
   const { controller, orbTransitioning } = useIslandWindow(native, machine, {

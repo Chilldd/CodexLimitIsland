@@ -5,11 +5,12 @@ use crate::{
     usage::{AppServer, UsageService},
 };
 use std::{io, path::Path, sync::mpsc};
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::Manager;
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
-/// 托盘右键菜单：已设置自定义路径时才启用“恢复默认路径”。
+/// 托盘右键菜单：已设置自定义路径时才启用“恢复默认路径”，并支持自由选择展示 5h 还是 week 限额。
 fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let current_window = settings::limit_display_window();
     let set_path = MenuItem::with_id(app, "set-codex-path", "设置 Codex 程序路径…", true, None::<&str>)?;
     let reset_path = MenuItem::with_id(
         app,
@@ -18,10 +19,34 @@ fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         settings::configured_codex_path().is_some(),
         None::<&str>,
     )?;
+    let item_5h = CheckMenuItem::with_id(
+        app,
+        "limit-window-5h",
+        "5 小时限额 (5h)",
+        true,
+        current_window == settings::LimitDisplayWindow::FiveHour,
+        None::<&str>,
+    )?;
+    let item_week = CheckMenuItem::with_id(
+        app,
+        "limit-window-week",
+        "每周限额 (7d)",
+        true,
+        current_window == settings::LimitDisplayWindow::Week,
+        None::<&str>,
+    )?;
+    let display_menu = Submenu::with_items(app, "展示额度", true, &[&item_5h, &item_week])?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     Menu::with_items(
         app,
-        &[&set_path, &reset_path, &PredefinedMenuItem::separator(app)?, &quit],
+        &[
+            &set_path,
+            &reset_path,
+            &PredefinedMenuItem::separator(app)?,
+            &display_menu,
+            &PredefinedMenuItem::separator(app)?,
+            &quit,
+        ],
     )
 }
 
@@ -158,6 +183,27 @@ fn reset_codex_path(app: &tauri::AppHandle) {
     app.state::<UsageService>().refresher.request();
 }
 
+fn select_limit_window(app: &tauri::AppHandle, window: settings::LimitDisplayWindow) {
+    if settings::limit_display_window() == window {
+        return;
+    }
+    if let Err(error) = settings::save_limit_display_window(window) {
+        diagnostics::log("保存展示限额设置失败", Some(&error));
+        notify(
+            app,
+            MessageDialogKind::Error,
+            "保存设置失败",
+            format!("{error}\n\n设置未保存。"),
+        );
+        return;
+    }
+    diagnostics::log("已更新展示限额设置", None);
+    refresh_tray_menu(app);
+    if let Err(error) = app.emit("limit-window-changed", window) {
+        diagnostics::log("发送展示限额变更事件失败", Some(&error.to_string()));
+    }
+}
+
 pub(crate) fn on_menu(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
     match event.id().as_ref() {
         "quit" => {
@@ -173,6 +219,8 @@ pub(crate) fn on_menu(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
         }
         "set-codex-path" => choose_codex_path(app.clone()),
         "reset-codex-path" => reset_codex_path(app),
+        "limit-window-5h" => select_limit_window(app, settings::LimitDisplayWindow::FiveHour),
+        "limit-window-week" => select_limit_window(app, settings::LimitDisplayWindow::Week),
         _ => (),
     }
 }
@@ -186,6 +234,7 @@ pub(crate) fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn rejects_unusable_codex_path() {
         assert!(matches!(

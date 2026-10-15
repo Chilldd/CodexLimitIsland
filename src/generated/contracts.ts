@@ -19,4 +19,6 @@ export type LimitWindow = { remainingPercent: number, resetsAt: number | null, }
 
 export type UsageSnapshot = { fiveHour: LimitWindow | null, weekly: LimitWindow | null, updatedAt: number, };
 
+export type LimitDisplayWindow = "fiveHour" | "week";
+
 export type TokenUsage = { taskTokens: number | null, sessionTokens: number | null, };

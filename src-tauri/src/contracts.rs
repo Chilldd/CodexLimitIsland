@@ -1,5 +1,6 @@
 use crate::{
     activity::model::*,
+    settings::LimitDisplayWindow,
     token_usage::TokenUsage,
     usage::{LimitWindow, UsageSnapshot},
 };
@@ -18,6 +19,7 @@ fn frontend_contract_matches_rust() {
         ActivitySnapshot::decl(&config),
         LimitWindow::decl(&config),
         UsageSnapshot::decl(&config),
+        LimitDisplayWindow::decl(&config),
         TokenUsage::decl(&config),
     ];
     let output = format!(

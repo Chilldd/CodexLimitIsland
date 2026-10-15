@@ -55,7 +55,7 @@ export function Island({
       <div className="island-content">
         <OrbStack orb={view.orb} expanded={expanded} transitioning={orbTransitioning} reducedMotion={reducedMotion} />
         <div className="minimal-copy">
-          <span>5h</span>
+          <span>{view.compactUsage.label}</span>
           <strong className={view.compactUsage.tone}>{view.compactUsage.percent}</strong>
         </div>
         <div className="compact-copy">
@@ -64,7 +64,7 @@ export function Island({
           </span>
           {view.compactElapsed && <Elapsed {...view.compactElapsed} />}
           <span className="compact-limit">
-            <span>5h</span>
+            <span>{view.compactUsage.label}</span>
             <strong className={view.compactUsage.tone}>{view.compactUsage.percent}</strong>
           </span>
         </div>

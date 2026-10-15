@@ -220,3 +220,32 @@ test("interaction reducer handles normal, quick and failed transitions", () => {
   assert.equal(reduceInteraction("collapsing", "COLLAPSE_FAILED"), "expanded");
   assert.equal(reduceInteraction("expanding", "EXPAND_FAILED"), "compact");
 });
+test("limitWindow option toggles compactUsage between 5h and week", () => {
+  const usageSnapshot: UsageSnapshot = {
+    fiveHour: { remainingPercent: 45, resetsAt: null },
+    weekly: { remainingPercent: 88, resetsAt: null },
+    updatedAt: now,
+  };
+  const view5h = derive([], [], usageSnapshot, {}, now, []);
+  assert.equal(view5h.compactUsage.label, "5h");
+  assert.equal(view5h.compactUsage.percent, "45%");
+  assert.equal(view5h.ariaLabel, "Codex 五小时剩余额度 45%");
+
+  const viewWeek = deriveIslandPresentation(snapshot(), usageSnapshot, {}, now, [], false, "week");
+  assert.equal(viewWeek.compactUsage.label, "7d");
+  assert.equal(viewWeek.compactUsage.percent, "88%");
+  assert.equal(viewWeek.ariaLabel, "Codex 每周剩余额度 88%");
+
+  const proUsage: UsageSnapshot = {
+    fiveHour: null,
+    weekly: { remainingPercent: 92, resetsAt: null },
+    updatedAt: now,
+  };
+  const proView5h = derive([], [], proUsage, {}, now, []);
+  assert.equal(proView5h.compactUsage.label, "5h");
+  assert.equal(proView5h.compactUsage.percent, "--");
+
+  const proViewWeek = deriveIslandPresentation(snapshot(), proUsage, {}, now, [], false, "week");
+  assert.equal(proViewWeek.compactUsage.label, "7d");
+  assert.equal(proViewWeek.compactUsage.percent, "92%");
+});
