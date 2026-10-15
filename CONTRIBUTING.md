@@ -8,7 +8,7 @@
 
 - **操作系统**：Windows 10/11（macOS / Linux 环境欢迎试验与适配）
 - **Node.js**：`^24.15.0` 或 `>=26`（建议使用 LTS）
-- **Rust**：Stable 1.89+（通过 `rustup component add clippy rustfmt` 安装工具链）
+- **Rust**：Stable，通过 `rustup component add clippy rustfmt` 安装组件。项目声明最低 1.89，本机验证版本为 1.96，最低可构建版本还受锁定依赖约束。
 - **包管理器**：Windows PowerShell 环境请使用 `npm.cmd`
 
 ---
@@ -16,19 +16,22 @@
 ## 📋 开发工作流
 
 1. **克隆并安装依赖**：
+
    ```powershell
-   git clone https://github.com/<your-username>/codexlimit.git
-   cd codexlimit
+   git clone https://github.com/Chilldd/CodexLimitIsland.git
+   cd CodexLimitIsland
    npm.cmd ci
    ```
 
 2. **本地调试**：
+
    ```powershell
    npm.cmd run tauri dev
    ```
 
 3. **跨层类型契约（Rust 与 TypeScript）**：
    若修改了 Rust 暴露给前端的数据模型（`src-tauri/src/`），请使用生成脚本更新契约定义，**请勿手工修改 `src/generated/contracts.ts`**：
+
    ```powershell
    npm.cmd run contracts:generate
    ```
@@ -48,11 +51,12 @@ npm.cmd run check
 ```
 
 `npm.cmd run check` 会依次执行以下检查：
+
 1. **版本一致性**：校验 `package.json`、`Cargo.toml` 与 Tauri 上下文版本；
 2. **代码格式**：Prettier 检查；
 3. **代码规范（Lint）**：ESLint 严格模式（0 error, 0 warning）；
 4. **前端构建与类型**：TypeScript 编译（包含应用、Node 配置与测试类型）；
-5. **单元测试**：Vitest 运行前端与 Hook 测试；
+5. **单元测试**：Vitest 运行前端状态、React hooks 与交互测试；
 6. **Rust 门禁**：`cargo fmt --check`、`cargo clippy -D warnings` 与 `cargo test`。
 
 在提交 PR 之前，请务必在本地确认 `npm.cmd run check` 顺利通过。
@@ -68,5 +72,6 @@ npm.cmd run check
   - Token Usage 附属于已完成的 Result。
   - 详细状态转换图与设计规则请参阅 [状态系统与事件流说明](docs/state-machine.md)。
 - **安全性与隐私约束**：
-  - 不得引入任何读取、持久化用户 Token、密码、提示词全文或命令原始输出的改动；
-  - Hook 接收端仅保留状态模型所需的关键元数据。
+  - 不直接读取 Codex 登录凭证文件，不记录或转发 API Key、登录令牌和密码；Token 用量数值不属于登录凭证；
+  - Hook 原始 JSON 只在本机转发，接收端仅保留状态模型所需的元数据，不持久化提示词、工具参数或工具输出；
+  - Token 统计仅从本地 Codex 会话文件提取用量记录；诊断日志只记录受控阶段和错误类别，不写入外部错误原文或私人内容。

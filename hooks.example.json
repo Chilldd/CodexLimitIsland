@@ -58,6 +58,30 @@
         ]
       }
     ],
+    "PreCompact": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codexlimit.exe --hook",
+            "timeout": 12
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codexlimit.exe --hook",
+            "timeout": 12
+          }
+        ]
+      }
+    ],
     "SubagentStart": [
       {
         "matcher": ".*",
@@ -90,6 +114,17 @@
             "type": "command",
             "command": "codexlimit.exe --hook",
             "timeout": 12
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codexlimit.exe --hook",
+            "timeout": 3
           }
         ]
       }
