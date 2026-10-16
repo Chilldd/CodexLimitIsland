@@ -1,5 +1,8 @@
 name: Quality checks
 
+# 与 `npm run check` 保持同一组检查，只是拆成并行 job，失败时能直接看出是哪一块。
+# 分支保护如需设置必需检查，只勾选 `ci-ok` 即可。
+
 on:
   push:
   pull_request:
@@ -12,10 +15,15 @@ concurrency:
   group: checks-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
 jobs:
-  windows:
+  frontend-static:
+    name: frontend-static (版本 / 格式 / Lint)
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -24,6 +32,58 @@ jobs:
         with:
           node-version: "24"
           cache: npm
+      - name: Install frontend dependencies
+        run: npm.cmd ci
+      - name: Version consistency
+        run: npm.cmd run version:check
+      - name: Prettier
+        run: npm.cmd run format:check
+      - name: ESLint
+        run: npm.cmd run lint
+
+  frontend-build:
+    name: frontend-build (类型检查 / 构建)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install frontend dependencies
+        run: npm.cmd ci
+      # build 脚本已包含 tsc（应用、Node 配置、测试三套 tsconfig）与 vite build。
+      - name: Typecheck and build
+        run: npm.cmd run build
+
+  frontend-test:
+    name: frontend-test (Vitest)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install frontend dependencies
+        run: npm.cmd ci
+      - name: Vitest
+        run: npm.cmd test
+
+  rust-lint:
+    name: rust-lint (fmt / clippy)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Set up Rust
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy
@@ -31,8 +91,52 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-      - name: Install frontend dependencies
-        run: npm.cmd ci
+      # tauri::generate_context! 编译期要求 frontendDist（../dist）目录存在。
+      # Rust 检查不依赖真实前端产物，用占位页即可，这样不必等待前端构建。
+      - name: Stub frontend dist
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Set-Content -Path dist/index.html -Value '<!doctype html><title>ci-stub</title>'
+      - name: rustfmt
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: clippy
+        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+  rust-test:
+    name: rust-test (cargo test)
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - name: Stub frontend dist
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Set-Content -Path dist/index.html -Value '<!doctype html><title>ci-stub</title>'
       # 隐藏 Win32 窗口测试照常执行；失败会使检查失败，不能据此声称交互式窗口已验收。
-      - name: Run quality checks
-        run: npm.cmd run check
+      # 该测试集同时包含 Rust 与 src/generated/contracts.ts 的契约漂移检查。
+      - name: cargo test
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib --quiet
+
+  ci-ok:
+    name: ci-ok
+    if: ${{ always() }}
+    needs:
+      - frontend-static
+      - frontend-build
+      - frontend-test
+      - rust-lint
+      - rust-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all checks to pass
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+        run: exit 1
