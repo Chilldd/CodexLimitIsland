@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { deriveIslandPresentation, resultKey } from "../src/islandState";
 import { active, done, snapshot, usage } from "./fixtures";
+import { WORK_IDLE_PROMPTS } from "../src/domain/idlePrompts";
 import {
   compactSize,
   expandedHeight,
@@ -56,17 +57,31 @@ test("row titles, tooltip fallback, agents and result metadata are derived witho
 });
 test("Meta, quota tones and ARIA copy preserve existing fallbacks", () => {
   const idle = deriveIslandPresentation(snapshot(), null, {}, 20_000, [], true);
+  expect(idle.expandedSubtitle).toBe("暂时无法获取额度");
   expect(idle.meta?.label).toBe("额度读取失败");
   expect(idle.ariaLabel).toBe("Codex 五小时剩余额度 --");
   const normal = deriveIslandPresentation(snapshot(), usage(30), {}, 20_000);
   expect(normal.compactUsage).toEqual({ tone: "warning", percent: "30%", label: "5h" });
   expect(normal.usageRows[0]).toMatchObject({ label: "5 小时额度", width: "30%", reset: "重置时间未知" });
-  expect(normal.meta).toMatchObject({ label: "额度已更新" });
-  const weeklyOnly = deriveIslandPresentation(
+  expect(normal.expandedSubtitle).toBe(WORK_IDLE_PROMPTS[0]);
+  expect(normal.meta).toMatchObject({ label: "" });
+  const countdown = deriveIslandPresentation(
+    snapshot(),
+    {
+      fiveHour: { remainingPercent: 37, resetsAt: 20 + 2 * 3600 + 33 * 60 },
+      weekly: { remainingPercent: 77, resetsAt: 20 + 6 * 86400 + 2 * 3600 },
+      updatedAt: 20,
+    },
+    {},
+    20_000,
+  );
+  expect(countdown.expandedSubtitle).toBe(WORK_IDLE_PROMPTS[0]);
+  expect(countdown.meta).toMatchObject({ label: "" });
+  const weeklyCountdown = deriveIslandPresentation(
     snapshot(),
     {
       fiveHour: null,
-      weekly: { remainingPercent: 80, resetsAt: null },
+      weekly: { remainingPercent: 80, resetsAt: 20 + 6 * 86400 + 2 * 3600 },
       updatedAt: 20,
     },
     {},
@@ -75,13 +90,37 @@ test("Meta, quota tones and ARIA copy preserve existing fallbacks", () => {
     false,
     "week",
   );
-  expect(weeklyOnly.compactUsage).toEqual({ tone: "healthy", percent: "80%", label: "7d" });
-  expect(weeklyOnly.ariaLabel).toBe("Codex 每周剩余额度 80%");
+  expect(weeklyCountdown.compactUsage).toEqual({ tone: "healthy", percent: "80%", label: "7d" });
+  expect(weeklyCountdown.expandedSubtitle).toBe(WORK_IDLE_PROMPTS[0]);
+  expect(weeklyCountdown.meta).toMatchObject({ label: "" });
+  expect(weeklyCountdown.ariaLabel).toBe("Codex 每周剩余额度 80%");
   const result = done();
-  const ready = { status: "ready" as const, taskTokens: 321, sessionTokens: 900, readyAt: 20_000 };
+  const ready = { status: "ready" as const, taskTokens: 12_648, sessionTokens: 20_000, readyAt: 20_000 };
   const completed = deriveIslandPresentation(snapshot([], [result]), usage(), { [resultKey(result)]: ready }, 20_000);
   expect(completed.meta).toEqual({ label: "sol", elapsed: { from: 19_100, to: 20_000 } });
   expect(completed.compactElapsed).toBeNull();
+  const idleAfterResult = deriveIslandPresentation(
+    snapshot([], [result]),
+    usage(37),
+    { [resultKey(result)]: ready },
+    30_000,
+  );
+  expect(idleAfterResult.layout).toBe("minimal");
+  expect(idleAfterResult.headline).toEqual({
+    sessionId: "sample-session",
+    title: "Demo",
+    subtitle: "上次完成 · 12.6k tokens",
+  });
+  expect(idleAfterResult.meta).toMatchObject({ label: "sol" });
+  const idleAfterInterrupted = deriveIslandPresentation(snapshot(), usage(37), {}, 30_000, [], false, "fiveHour", {
+    result: { ...result, kind: "interrupted", model: null },
+  });
+  expect(idleAfterInterrupted.headline).toEqual({
+    sessionId: "sample-session",
+    title: "Demo",
+    subtitle: "上次任务已中断",
+  });
+  expect(idleAfterInterrupted.meta).toMatchObject({ label: "" });
   const permission = deriveIslandPresentation(
     snapshot([{ ...active(), attention: "permission" }], [result]),
     usage(0),

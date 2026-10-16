@@ -1,6 +1,6 @@
 [package]
 name = "codexlimit"
-version = "0.1.0"
+version = "0.1.1"
 description = "Codex App quota island for Windows"
 authors = ["YuG"]
 edition = "2021"

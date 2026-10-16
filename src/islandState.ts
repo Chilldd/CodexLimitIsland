@@ -1,4 +1,5 @@
-import { percent, tone, resetText } from "./domain/format";
+import { percent, tone, resetText, resetSummary } from "./domain/format";
+import { getIdlePrompt } from "./domain/idlePrompts";
 
 import type {
   Activity,
@@ -27,6 +28,7 @@ export type TokenUsageState =
   | { status: "loading" }
   | { status: "ready"; taskTokens: number | null; sessionTokens: number | null; readyAt: number }
   | { status: "unavailable" };
+export type LastTurnSummary = { result: TurnResult; token?: TokenUsageState };
 export type OrbState =
   "working" | "searching" | "solving" | "connecting" | "weaving" | "composing" | "breathing" | "shaping";
 export function newerActivity(current: ActivitySnapshot, next: ActivitySnapshot): ActivitySnapshot {
@@ -109,12 +111,19 @@ export type IslandPresentation = {
   compactUsage: { tone: ReturnType<typeof tone>; percent: string; label: string };
   compactElapsed: ElapsedView | null;
   ariaLabel: string;
+  isIdle: boolean;
 };
 function resultLabel(result: TurnResult, token?: TokenUsageState): string {
   if (result.kind === "interrupted") return "任务已中断";
   return token?.status === "ready" && token.taskTokens != null
     ? `任务完成 · ${token.taskTokens.toLocaleString("zh-CN")} tokens`
     : "任务已完成";
+}
+function idleTurnSubtitle(turn: LastTurnSummary): string {
+  if (turn.result.kind === "interrupted") return "上次任务已中断";
+  return turn.token?.status === "ready" && turn.token.taskTokens != null
+    ? `上次完成 · ${compactTokens(turn.token.taskTokens)} tokens`
+    : "上次任务已完成";
 }
 export function deriveIslandPresentation(
   snapshot: ActivitySnapshot,
@@ -124,6 +133,7 @@ export function deriveIslandPresentation(
   heldResults: TurnResult[] = [],
   usageFailed = false,
   limitWindow: LimitDisplayWindow = "fiveHour",
+  lastTurn: LastTurnSummary | null = null,
 ): IslandPresentation {
   const sessions = snapshot.sessions
     .filter((session) => session.lifecycle === "active")
@@ -139,8 +149,14 @@ export function deriveIslandPresentation(
   const heldKeys = new Set(heldResults.map(resultKey));
   const byKey = new Map(snapshot.recentResults.map((result) => [resultKey(result), result]));
   heldResults.forEach((result) => byKey.set(resultKey(result), result));
+  const sortedResults = [...byKey.values()].sort(
+    (a, b) =>
+      b.finishedAt - a.finishedAt ||
+      a.sessionId.localeCompare(b.sessionId) ||
+      (a.turnId ?? "").localeCompare(b.turnId ?? ""),
+  );
   let nextUpdateAt: number | null = null;
-  const visibleResults = [...byKey.values()]
+  const visibleResults = sortedResults
     .filter((result) => {
       const token = tokens[resultKey(result)];
       const expiresAt = Math.max(
@@ -152,12 +168,6 @@ export function deriveIslandPresentation(
       nextUpdateAt = nextUpdateAt == null ? expiresAt : Math.min(nextUpdateAt, expiresAt);
       return true;
     })
-    .sort(
-      (a, b) =>
-        b.finishedAt - a.finishedAt ||
-        a.sessionId.localeCompare(b.sessionId) ||
-        (a.turnId ?? "").localeCompare(b.turnId ?? ""),
-    )
     .map((result) => ({
       result,
       token: tokens[resultKey(result)],
@@ -169,10 +179,30 @@ export function deriveIslandPresentation(
   const activeAgents = primarySession?.agents.filter((agent) => agent.activity !== null).length ?? 0;
   const layout = rowCount > 1 ? "multi" : rowCount === 1 || quota ? "single" : "minimal";
   const attention = permission ? "permission" : quota ? "quota" : "none";
+  const latestExpired = sortedResults[0];
+  const candidateResult =
+    latestExpired && (!lastTurn || latestExpired.finishedAt >= lastTurn.result.finishedAt)
+      ? latestExpired
+      : lastTurn?.result;
+  const idleTurn: LastTurnSummary | null =
+    !primarySession && !primaryResult && candidateResult
+      ? {
+          result: candidateResult,
+          token:
+            tokens[resultKey(candidateResult)] ??
+            (lastTurn && resultKey(lastTurn.result) === resultKey(candidateResult) ? lastTurn.token : undefined),
+        }
+      : null;
   let feedback: IslandPresentation["feedback"] = "none";
   let compactLabel = "Codex";
   let expandedTitle = "暂无运行任务";
-  let expandedSubtitle = "额度状态";
+  let expandedSubtitle = idleTurn
+    ? idleTurnSubtitle(idleTurn)
+    : usageFailed
+      ? "暂时无法获取额度"
+      : !usage
+        ? "正在同步账户额度"
+        : getIdlePrompt(now);
   let selectedOrb: { state: OrbState; speed: number } = idleOrb;
   if (primarySession) {
     const activity = primarySession.activity ?? "thinking";
@@ -205,16 +235,20 @@ export function deriveIslandPresentation(
     }
   }
   if (quota) {
-    feedback = "none";
-    compactLabel = "额度已用尽";
-    expandedTitle =
+    const quotaWeek =
       limitWindow === "week"
         ? usage?.weekly?.remainingPercent === 0
-          ? "每周额度已用尽"
-          : "5 小时额度已用尽"
-        : usage?.fiveHour?.remainingPercent === 0
-          ? "5 小时额度已用尽"
-          : "每周额度已用尽";
+        : usage?.fiveHour?.remainingPercent !== 0 && usage?.weekly?.remainingPercent === 0;
+    feedback = "none";
+    compactLabel = "额度已用尽";
+    expandedTitle = quotaWeek ? "每周额度已用尽" : "5 小时额度已用尽";
+    if (!primarySession && !primaryResult) {
+      expandedSubtitle = resetSummary(
+        quotaWeek ? (usage?.weekly ?? null) : (usage?.fiveHour ?? null),
+        quotaWeek ? "周额度" : "5h 额度",
+        now,
+      );
+    }
   }
   if (permission) {
     feedback = "none";
@@ -224,6 +258,8 @@ export function deriveIslandPresentation(
   }
   const targetLimit = limitWindow === "week" ? (usage?.weekly ?? null) : (usage?.fiveHour ?? null);
   const limitLabel = limitWindow === "week" ? "7d" : "5h";
+  const idleMetaLabel = usageFailed ? "额度读取失败" : !usage ? "正在连接 Codex" : quota ? "已用 100%" : "";
+  const isIdle = !primarySession && !primaryResult && !quota && !permission && !idleTurn;
   return {
     layout,
     attention,
@@ -231,6 +267,7 @@ export function deriveIslandPresentation(
     compactLabel,
     expandedTitle,
     expandedSubtitle,
+    isIdle,
     orb: selectedOrb,
     primarySession,
     primaryResult,
@@ -246,8 +283,8 @@ export function deriveIslandPresentation(
       token?.status === "ready",
     nextUpdateAt,
     headline: {
-      sessionId: primarySession?.id ?? primaryResult?.result.sessionId,
-      title: primarySession?.project || primaryResult?.result.project || "Codex 会话",
+      sessionId: primarySession?.id ?? primaryResult?.result.sessionId ?? idleTurn?.result.sessionId,
+      title: primarySession?.project || primaryResult?.result.project || idleTurn?.result.project || "Codex 会话",
       subtitle: expandedSubtitle,
     },
     rows: [
@@ -277,10 +314,7 @@ export function deriveIslandPresentation(
       layout === "multi"
         ? null
         : {
-            label:
-              primarySession?.model ||
-              primaryResult?.result.model ||
-              (usageFailed ? "额度读取失败" : usage ? "额度已更新" : "正在连接 Codex"),
+            label: primarySession?.model || primaryResult?.result.model || idleTurn?.result.model || idleMetaLabel,
             ...(primarySession
               ? { elapsed: { from: primarySession.startedAt, to: null } }
               : primaryResult

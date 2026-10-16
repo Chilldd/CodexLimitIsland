@@ -3,6 +3,8 @@ import { exactTokens } from "../domain/format";
 import { SessionRow, type NavigationView } from "./SessionRow";
 import { UsagePanel } from "./UsagePanel";
 import { Elapsed } from "./Elapsed";
+import { JumpIcon } from "./JumpIcon";
+import { IdlePromptTicker } from "./IdlePromptTicker";
 export function ExpandedContent({ view, navigation }: { view: IslandPresentation; navigation: NavigationView }) {
   const { headline, meta } = view;
   return (
@@ -26,13 +28,21 @@ export function ExpandedContent({ view, navigation }: { view: IslandPresentation
                 }}
               >
                 <strong>{headline.title}</strong>
-                <span aria-hidden="true">↗</span>
+                <span className="session-link-icon" aria-hidden="true">
+                  <JumpIcon />
+                </span>
               </button>
             ) : (
               <strong>Codex</strong>
             )}
             <small>
-              {navigation.openingSession === headline.sessionId ? "正在打开 Codex App…" : headline.subtitle}
+              {navigation.openingSession === headline.sessionId ? (
+                "正在打开 Codex App…"
+              ) : view.isIdle && !headline.sessionId ? (
+                <IdlePromptTicker active={navigation.expanded} />
+              ) : (
+                headline.subtitle
+              )}
             </small>
           </>
         )}

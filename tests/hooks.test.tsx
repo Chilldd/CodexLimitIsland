@@ -14,6 +14,8 @@ import { Elapsed } from "../src/components/Elapsed";
 import App from "../src/App";
 import { SessionRow } from "../src/components/SessionRow";
 import { ExpandedContent } from "../src/components/ExpandedContent";
+import { IdlePromptTicker } from "../src/components/IdlePromptTicker";
+import { WORK_IDLE_PROMPTS } from "../src/domain/idlePrompts";
 import { deriveIslandPresentation } from "../src/islandState";
 import { resultKey, type ActivitySnapshot, type UsageSnapshot, type TokenUsageState } from "../src/islandState";
 import type { IslandInteractionState } from "../src/islandInteraction";
@@ -329,6 +331,9 @@ test("App keeps completed Token while expanded and restores the minimal target e
   expect(native.setSize.mock.calls).toEqual([[390, 42]]);
   expect(native.setHitRegion.mock.calls).toEqual([[100, 40]]);
   expect(ui.container.querySelector(".token-summary")).toBeNull();
+  expect(ui.container.querySelector(".session-link")?.textContent).toContain("Demo");
+  expect(ui.container.querySelector(".activity-head small")?.textContent).toBe("上次完成 · 321 tokens");
+  expect(ui.container.querySelector(".meta > span")?.textContent).toBe("sol");
   expect(console.error).not.toHaveBeenCalled();
 });
 
@@ -401,4 +406,20 @@ test("useLimitWindow reads initial preference and updates upon limit-window-chan
 
   hook.unmount();
   expect(listeners.has("limit-window-changed")).toBe(false);
+});
+
+test("IdlePromptTicker renders initial work joke and advances every 5 seconds when active", async () => {
+  const ui = render(<IdlePromptTicker active={true} />);
+  expect(ui.container.textContent).toBe(WORK_IDLE_PROMPTS[0]);
+
+  await act(() => vi.advanceTimersByTimeAsync(5_000));
+  expect(ui.container.textContent).toBe(WORK_IDLE_PROMPTS[1]);
+
+  await act(() => vi.advanceTimersByTimeAsync(5_000));
+  expect(ui.container.textContent).toBe(WORK_IDLE_PROMPTS[2]);
+
+  ui.rerender(<IdlePromptTicker active={false} />);
+  await act(() => vi.advanceTimersByTimeAsync(10_000));
+  expect(ui.container.textContent).toBe(WORK_IDLE_PROMPTS[2]);
+  ui.unmount();
 });
