@@ -1,0 +1,11 @@
+/* 紧凑态宽度档位：由展示模型的 compactTier 决定。result 档沿用 App.css 中的 --compact-width。 */
+
+.island.layout-single:not(.expanded)[data-tier="run"],
+.island.layout-multi:not(.expanded)[data-tier="run"] {
+  width: var(--compact-run-width);
+}
+
+.island.layout-single:not(.expanded)[data-tier="multi"],
+.island.layout-multi:not(.expanded)[data-tier="multi"] {
+  width: var(--compact-multi-width);
+}
