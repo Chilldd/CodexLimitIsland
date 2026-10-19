@@ -73,7 +73,7 @@ test("layout follows active sessions without frontend stale filtering", () => {
   assert.equal(derive([session("s")]).layout, "single");
   assert.equal(derive([session("s"), session("b")]).layout, "multi");
   assert.equal(derive([session("s", "executing")], [], null, {}, now + 11 * 60_000).layout, "single");
-  assert.equal(derive([session("s")]).compactLabel, "正在思考中");
+  assert.equal(derive([session("s")]).compactLabel, "思考中");
   assert.equal(derive([session("s", "compacting")]).expandedTitle, "正在压缩上下文…");
 });
 test("permission retains layout and wins over quota", () => {
@@ -132,11 +132,11 @@ test("completed context and token loading states", () => {
   const done = result();
   const key = resultKey(done);
   const loading = derive([], [done], null, { [key]: { status: "loading" } });
-  assert.equal(loading.compactLabel, "已完成");
+  assert.equal(loading.compactLabel, "完成");
   assert.equal(loading.primaryResult?.result.project, "s");
   assert.equal(loading.primaryResult?.result.model, "sol");
   assert.equal(loading.primaryResult?.result.startedAt, now - 900);
-  assert.equal(derive([], [done], null, { [key]: { status: "unavailable" } }).compactLabel, "已完成");
+  assert.equal(derive([], [done], null, { [key]: { status: "unavailable" } }).compactLabel, "完成");
   const ready: TokenUsageState = { status: "ready", taskTokens: 12_600, sessionTokens: 20_000, readyAt: now };
   assert.equal(derive([], [done], null, { [key]: ready }).compactLabel, "完成 · 12.6k");
   assert.equal(derive([], [done], null, { [key]: ready }).showTokenSummary, true);
