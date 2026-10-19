@@ -294,12 +294,12 @@ test("Completed expanded then expired collapses directly to the live minimal tar
 
 test("existing morph, mouse leave and restore delays stay unchanged", () => {
   assert.equal(MORPH_MS, 340);
-  assert.equal(AUTO_COLLAPSE_DELAY_MS, 260);
+  assert.equal(AUTO_COLLAPSE_DELAY_MS, 420);
   assert.equal(collapseRestoreDelay(false), 420);
   assert.equal(collapseRestoreDelay(true), 190);
 });
 
-test("leaving during expansion waits 260ms and reentering cancels pending collapse", () => {
+test("leaving during expansion waits 420ms and reentering cancels pending collapse", () => {
   const clock = fakeClock();
   const timers = createInteractionTimers(clock);
   let state = reduceInteraction("compact", "EXPAND");
@@ -307,14 +307,14 @@ test("leaving during expansion waits 260ms and reentering cancels pending collap
     state = reduceInteraction(state, "COLLAPSE");
   };
   timers.scheduleLeave(collapse);
-  clock.tick(259);
+  clock.tick(419);
   assert.equal(state, "expanding");
   assert.equal(timers.hasPendingLeave(), true);
   timers.cancelLeave();
   clock.tick(1);
   assert.equal(state, "expanding");
   timers.scheduleLeave(collapse);
-  clock.tick(260);
+  clock.tick(420);
   assert.equal(state, "collapsing");
   assert.equal(timers.hasPendingLeave(), false);
 });

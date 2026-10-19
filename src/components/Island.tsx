@@ -2,7 +2,6 @@ import type { PointerEventHandler, TransitionEventHandler } from "react";
 import type { IslandPresentation } from "../islandState";
 import { OrbStack } from "./OrbStack";
 import { ExpandedContent } from "./ExpandedContent";
-import { Elapsed } from "./Elapsed";
 import type { NavigationView } from "./SessionRow";
 type Props = {
   view: IslandPresentation;
@@ -43,10 +42,17 @@ export function Island({
       data-attention={view.attention}
       data-feedback={view.feedback}
       style={expanded ? { height } : undefined}
+      tabIndex={0}
       onMouseEnter={enter}
       onMouseLeave={leave}
       {...drag}
       onTransitionEnd={onTransitionEnd}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        toggle();
+      }}
       onClick={(event) => {
         if (!(event.target as Element).closest("button")) toggle();
       }}
@@ -54,21 +60,20 @@ export function Island({
     >
       <div className="island-content">
         <OrbStack orb={view.orb} expanded={expanded} transitioning={orbTransitioning} reducedMotion={reducedMotion} />
-        <div className="minimal-copy">
+        <div className="minimal-copy" aria-hidden={expanded || view.layout !== "minimal"}>
           <span>{view.compactUsage.label}</span>
           <strong className={view.compactUsage.tone}>{view.compactUsage.percent}</strong>
         </div>
-        <div className="compact-copy">
+        <div className="compact-copy" aria-hidden={expanded || view.layout === "minimal"}>
           <span className="activity-label" key={view.compactLabel} title={view.compactLabel}>
             {view.compactLabel}
           </span>
-          {view.compactElapsed && <Elapsed {...view.compactElapsed} />}
           <span className="compact-limit">
             <span>{view.compactUsage.label}</span>
             <strong className={view.compactUsage.tone}>{view.compactUsage.percent}</strong>
           </span>
         </div>
-        <ExpandedContent view={detail} navigation={navigation} />
+        <ExpandedContent view={detail} navigation={navigation} expanded={expanded} />
       </div>
     </main>
   );

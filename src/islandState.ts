@@ -45,13 +45,13 @@ export function effectiveAttention(session: Session): Attention {
 const RESULT_DISPLAY_MS = 3_000;
 const TOKEN_READY_DISPLAY_MS = 2_800;
 const copy: Record<Activity, { compact: string; expanded: string }> = {
-  thinking: { compact: "Thinking...", expanded: "Thinking..." },
-  working: { compact: "Working...", expanded: "Working..." },
-  searching: { compact: "Searching...", expanded: "Searching..." },
-  editing: { compact: "Editing...", expanded: "Editing files..." },
-  executing: { compact: "Running...", expanded: "Running command..." },
-  connecting: { compact: "Connecting...", expanded: "Connecting..." },
-  compacting: { compact: "Compacting...", expanded: "Compacting context..." },
+  thinking: { compact: "思考中…", expanded: "正在思考…" },
+  working: { compact: "处理中…", expanded: "正在处理…" },
+  searching: { compact: "搜索中…", expanded: "正在搜索…" },
+  editing: { compact: "编辑中…", expanded: "正在编辑文件…" },
+  executing: { compact: "运行中…", expanded: "正在运行命令…" },
+  connecting: { compact: "连接中…", expanded: "正在连接…" },
+  compacting: { compact: "压缩中…", expanded: "正在压缩上下文…" },
 };
 const orb: Record<Activity, { state: OrbState; speed: number }> = {
   thinking: { state: "solving", speed: 1 },
@@ -109,7 +109,6 @@ export type IslandPresentation = {
   meta: MetaView | null;
   usageRows: UsageRowView[];
   compactUsage: { tone: ReturnType<typeof tone>; percent: string; label: string };
-  compactElapsed: ElapsedView | null;
   ariaLabel: string;
   isIdle: boolean;
 };
@@ -206,9 +205,9 @@ export function deriveIslandPresentation(
   let selectedOrb: { state: OrbState; speed: number } = idleOrb;
   if (primarySession) {
     const activity = primarySession.activity ?? "thinking";
-    compactLabel = activeAgents > 1 ? "Agents..." : copy[activity].compact;
-    expandedTitle = activeAgents > 1 ? "Working with agents..." : copy[activity].expanded;
-    expandedSubtitle = activeAgents > 1 ? `${activeAgents} 个子代理` : "正在处理当前会话";
+    compactLabel = activeAgents > 1 ? "多代理…" : copy[activity].compact;
+    expandedTitle = activeAgents > 1 ? "多个子代理运行中" : copy[activity].expanded;
+    expandedSubtitle = activeAgents > 1 ? `${activeAgents} 个子代理` : "当前会话";
     selectedOrb = activeAgents > 1 || sessions.length > 1 ? { state: "weaving", speed: 1 } : orb[activity];
     if (sessions.length > 1) {
       compactLabel = `${sessions.length} 个会话`;
@@ -218,7 +217,7 @@ export function deriveIslandPresentation(
     if (visibleResults.length) {
       const completed = visibleResults.filter((item) => item.result.kind === "completed").length;
       const interrupted = visibleResults.length - completed;
-      const suffix = interrupted ? `${visibleResults.length} 个结果` : `${completed} 完成`;
+      const suffix = interrupted ? `${visibleResults.length} 结果` : `${completed} 完成`;
       compactLabel = `${sessions.length} 运行 · ${suffix}`;
       expandedTitle = `${sessions.length} 运行 · ${visibleResults.length} 个结果`;
     }
@@ -330,8 +329,8 @@ export function deriveIslandPresentation(
           },
     usageRows: (
       [
-        ["5 小时额度", usage?.fiveHour ?? null],
-        ["每周额度", usage?.weekly ?? null],
+        ["5 小时剩余", usage?.fiveHour ?? null],
+        ["每周剩余", usage?.weekly ?? null],
       ] as const
     ).map(([label, value]) => ({
       label,
@@ -345,7 +344,6 @@ export function deriveIslandPresentation(
       percent: percent(targetLimit),
       label: limitLabel,
     },
-    compactElapsed: layout === "single" && primarySession ? { from: primarySession.startedAt, to: null } : null,
     ariaLabel:
       layout === "minimal"
         ? `Codex ${limitWindow === "week" ? "每周" : "五小时"}剩余额度 ${percent(targetLimit)}`

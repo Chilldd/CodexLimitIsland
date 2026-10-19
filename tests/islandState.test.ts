@@ -73,6 +73,8 @@ test("layout follows active sessions without frontend stale filtering", () => {
   assert.equal(derive([session("s")]).layout, "single");
   assert.equal(derive([session("s"), session("b")]).layout, "multi");
   assert.equal(derive([session("s", "executing")], [], null, {}, now + 11 * 60_000).layout, "single");
+  assert.equal(derive([session("s")]).compactLabel, "思考中…");
+  assert.equal(derive([session("s", "compacting")]).expandedTitle, "正在压缩上下文…");
 });
 test("permission retains layout and wins over quota", () => {
   const view = derive([session("s", "thinking", "permission"), session("b")], [], usage(0));
@@ -243,7 +245,7 @@ test("limitWindow option toggles compactUsage between 5h and week", () => {
   };
   const proView5h = derive([], [], proUsage, {}, now, []);
   assert.equal(proView5h.compactUsage.label, "5h");
-  assert.equal(proView5h.compactUsage.percent, "--");
+  assert.equal(proView5h.compactUsage.percent, "—");
 
   const proViewWeek = deriveIslandPresentation(snapshot(), proUsage, {}, now, [], false, "week");
   assert.equal(proViewWeek.compactUsage.label, "7d");

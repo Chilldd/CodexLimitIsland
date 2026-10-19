@@ -76,7 +76,7 @@ test("missing transitionend still restores at the original fallback deadline", a
   const f = fixture();
   await f.controller.expand();
   f.controller.leave();
-  await vi.advanceTimersByTimeAsync(259);
+  await vi.advanceTimersByTimeAsync(419);
   expect(f.machine.current()).toBe("expanded");
   await vi.advanceTimersByTimeAsync(1);
   expect(f.machine.current()).toBe("collapsing");

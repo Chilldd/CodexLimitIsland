@@ -59,10 +59,10 @@ test("Meta, quota tones and ARIA copy preserve existing fallbacks", () => {
   const idle = deriveIslandPresentation(snapshot(), null, {}, 20_000, [], true);
   expect(idle.expandedSubtitle).toBe("暂时无法获取额度");
   expect(idle.meta?.label).toBe("额度读取失败");
-  expect(idle.ariaLabel).toBe("Codex 五小时剩余额度 --");
+  expect(idle.ariaLabel).toBe("Codex 五小时剩余额度 —");
   const normal = deriveIslandPresentation(snapshot(), usage(30), {}, 20_000);
   expect(normal.compactUsage).toEqual({ tone: "warning", percent: "30%", label: "5h" });
-  expect(normal.usageRows[0]).toMatchObject({ label: "5 小时额度", width: "30%", reset: "重置时间未知" });
+  expect(normal.usageRows[0]).toMatchObject({ label: "5 小时剩余", width: "30%", reset: "重置时间未知" });
   expect(normal.expandedSubtitle).toBe(WORK_IDLE_PROMPTS[0]);
   expect(normal.meta).toMatchObject({ label: "" });
   const countdown = deriveIslandPresentation(
@@ -98,7 +98,6 @@ test("Meta, quota tones and ARIA copy preserve existing fallbacks", () => {
   const ready = { status: "ready" as const, taskTokens: 12_648, sessionTokens: 20_000, readyAt: 20_000 };
   const completed = deriveIslandPresentation(snapshot([], [result]), usage(), { [resultKey(result)]: ready }, 20_000);
   expect(completed.meta).toEqual({ label: "sol", elapsed: { from: 19_100, to: 20_000 } });
-  expect(completed.compactElapsed).toBeNull();
   const idleAfterResult = deriveIslandPresentation(
     snapshot([], [result]),
     usage(37),
@@ -145,6 +144,9 @@ test("CSS tokens, visible size, native hit regions and Tauri/Rust bounds stay al
   expect(compactSize("minimal")).toEqual({ width: 100, height: 40 });
   expect(compactSize("single")).toEqual({ width: 204, height: 42 });
   expect(EXPANDED_HIT_WIDTH).toBe(384);
+  const appCss = readFileSync(resolve("src/App.css"), "utf8");
+  expect(appCss).toMatch(/width:\s*var\(--expanded-width\)/);
+  for (const width of [MINIMAL_WIDTH, COMPACT_WIDTH, EXPANDED_WIDTH]) expect(appCss).not.toContain(`width: ${width}px`);
   expect(expandedHeight(1, false)).toBe(154);
   expect(expandedHeight(1, true)).toBe(204);
   expect(expandedHeight(9, false)).toBe(420);

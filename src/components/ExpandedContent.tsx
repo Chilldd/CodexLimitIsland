@@ -5,10 +5,18 @@ import { UsagePanel } from "./UsagePanel";
 import { Elapsed } from "./Elapsed";
 import { JumpIcon } from "./JumpIcon";
 import { IdlePromptTicker } from "./IdlePromptTicker";
-export function ExpandedContent({ view, navigation }: { view: IslandPresentation; navigation: NavigationView }) {
+export function ExpandedContent({
+  view,
+  navigation,
+  expanded,
+}: {
+  view: IslandPresentation;
+  navigation: NavigationView;
+  expanded: boolean;
+}) {
   const { headline, meta } = view;
   return (
-    <div className="expanded-copy">
+    <div className="expanded-copy" aria-hidden={!expanded} inert={expanded ? undefined : true}>
       <div className="activity-head">
         <span key={view.expandedTitle} title={view.expandedTitle}>
           {view.expandedTitle}

@@ -1,7 +1,7 @@
 import type { LimitWindow } from "../islandState";
 
 export function percent(value: LimitWindow | null): string {
-  return value ? `${Math.round(value.remainingPercent)}%` : "--";
+  return value ? `${Math.round(value.remainingPercent)}%` : "—";
 }
 export function tone(value: LimitWindow | null): "neutral" | "critical" | "warning" | "healthy" {
   return !value

@@ -324,7 +324,7 @@ test("App keeps completed Token while expanded and restores the minimal target e
   native.setHitRegion.mockClear();
   native.setSize.mockClear();
   fireEvent.mouseLeave(main);
-  await act(() => vi.advanceTimersByTimeAsync(260));
+  await act(() => vi.advanceTimersByTimeAsync(420));
   expect(main.classList.contains("layout-minimal")).toBe(true);
   expect(ui.container.querySelector(".token-summary")).not.toBeNull();
   await act(() => vi.advanceTimersByTimeAsync(500));
@@ -360,7 +360,7 @@ test("Session and headline navigation buttons stop propagation and keep busy/dis
   open.mockClear();
   const headline = render(
     <div onClick={toggle}>
-      <ExpandedContent view={single} navigation={navigation} />
+      <ExpandedContent view={single} navigation={navigation} expanded={true} />
     </div>,
   );
   fireEvent.click(headline.getByRole("button"));
