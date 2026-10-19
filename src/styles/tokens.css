@@ -12,9 +12,9 @@
   --morph-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --island-padding: 2px;
   --minimal-width: 96px;
-  --compact-run-width: 140px;
-  --compact-width: 164px;
-  --compact-multi-width: 188px;
+  --compact-run-width: 136px;
+  --compact-width: 156px;
+  --compact-multi-width: 172px;
   --expanded-width: 380px;
   --expanded-max-height: 420px;
 

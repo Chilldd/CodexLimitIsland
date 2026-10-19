@@ -142,7 +142,7 @@ test("CSS tokens, visible size, native hit regions and Tauri/Rust bounds stay al
     expect(css).toMatch(new RegExp(`--${key}:\\s*${value}px`));
   expect(css).toMatch(new RegExp(`--morph-duration:\\s*${MORPH_MS}ms`));
   expect(compactSize("minimal")).toEqual({ width: 100, height: 40 });
-  expect(compactSize("single")).toEqual({ width: 168, height: 42 });
+  expect(compactSize("single")).toEqual({ width: 160, height: 42 });
   expect(EXPANDED_HIT_WIDTH).toBe(384);
   const appCss = readFileSync(resolve("src/App.css"), "utf8");
   expect(appCss).toMatch(/width:\s*var\(--expanded-width\)/);

@@ -218,14 +218,15 @@ button {
 }
 
 .compact-copy {
-  left: 37px;
+  left: 38px;
   right: 11px;
   opacity: 0;
   transform: translateY(5px);
   pointer-events: none;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  column-gap: 6px;
+  grid-template-columns: minmax(0, auto) 1px max-content;
+  justify-content: space-between;
+  column-gap: 5px;
   align-items: baseline;
   align-content: center;
   font-size: var(--font-sm);
@@ -233,11 +234,20 @@ button {
   line-height: var(--leading-tight);
 }
 
+.compact-copy::after {
+  content: "";
+  order: 1;
+  align-self: center;
+  width: 1px;
+  height: 11px;
+  background: var(--stroke-strong);
+}
+
 .activity-label {
   animation: status-arrive 0.22s var(--morph-ease) both;
   display: flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -260,23 +270,15 @@ button {
 }
 
 .compact-limit {
+  order: 2;
   color: var(--text-2);
   font-size: var(--font-xs);
   flex: none;
   white-space: nowrap;
   display: flex;
   align-items: baseline;
-  gap: 3px;
+  gap: 4px;
   justify-self: end;
-}
-
-.compact-limit::before {
-  content: "";
-  align-self: center;
-  width: 1px;
-  height: 11px;
-  margin-right: 4px;
-  background: var(--stroke-strong);
 }
 
 .compact-limit > span {
