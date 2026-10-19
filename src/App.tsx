@@ -16,6 +16,7 @@ import { nativeWindow, type IslandNativeWindow } from "./nativeWindow";
 import { Island } from "./components/Island";
 import { DebugSwitcher } from "./components/DebugSwitcher";
 import "./App.css";
+import "./styles/states.css";
 
 function App({ native = nativeWindow }: { native?: IslandNativeWindow }) {
   const usage = useUsage();
@@ -39,7 +40,7 @@ function App({ native = nativeWindow }: { native?: IslandNativeWindow }) {
   );
   const height = expandedHeight(view.rowCount, view.showTokenSummary);
   const { controller, orbTransitioning } = useIslandWindow(native, machine, {
-    compact: compactSize(view.layout),
+    compact: compactSize(view.layout, view.compactTier),
     expandedHeight: height,
     reducedMotion,
     debug: debugEnabled,
