@@ -7,12 +7,14 @@
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
 
-  /* 尺寸与 src/domain/metrics.ts 保持一致，由 tests/presentation.test.ts 校验。 */
+  /* 尺寸与 src/domain/metrics.ts 保持一致，由 tests/presentation.test.ts 与 tests/compactTier.test.ts 校验。 */
   --morph-duration: 340ms;
   --morph-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --island-padding: 2px;
   --minimal-width: 96px;
+  --compact-run-width: 140px;
   --compact-width: 164px;
+  --compact-multi-width: 188px;
   --expanded-width: 380px;
   --expanded-max-height: 420px;
 

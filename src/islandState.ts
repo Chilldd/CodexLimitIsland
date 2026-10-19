@@ -1,5 +1,6 @@
 import { percent, tone, resetText, resetSummary } from "./domain/format";
 import { getIdlePrompt } from "./domain/idlePrompts";
+import type { CompactTier } from "./domain/metrics";
 
 import type {
   Activity,
@@ -45,13 +46,13 @@ export function effectiveAttention(session: Session): Attention {
 const RESULT_DISPLAY_MS = 3_000;
 const TOKEN_READY_DISPLAY_MS = 2_800;
 const copy: Record<Activity, { compact: string; expanded: string }> = {
-  thinking: { compact: "正在思考中", expanded: "正在思考…" },
-  working: { compact: "正在处理中", expanded: "正在处理…" },
-  searching: { compact: "正在搜索中", expanded: "正在搜索…" },
-  editing: { compact: "正在编辑中", expanded: "正在编辑文件…" },
-  executing: { compact: "正在运行中", expanded: "正在运行命令…" },
-  connecting: { compact: "正在连接中", expanded: "正在连接…" },
-  compacting: { compact: "正在压缩中", expanded: "正在压缩上下文…" },
+  thinking: { compact: "思考中", expanded: "正在思考…" },
+  working: { compact: "处理中", expanded: "正在处理…" },
+  searching: { compact: "搜索中", expanded: "正在搜索…" },
+  editing: { compact: "编辑中", expanded: "正在编辑文件…" },
+  executing: { compact: "运行中", expanded: "正在运行命令…" },
+  connecting: { compact: "连接中", expanded: "正在连接…" },
+  compacting: { compact: "压缩中", expanded: "正在压缩上下文…" },
 };
 const orb: Record<Activity, { state: OrbState; speed: number }> = {
   thinking: { state: "solving", speed: 1 },
@@ -74,6 +75,13 @@ const compactTokens = (value: number) => {
   }
   return String(value);
 };
+// 紧凑态宽度档位：完成结果始终按「完成 + token」预留，避免 token 加载、失败时二次变宽或收窄；
+// 其余按文案字数分档（≤3 字 run，≤5 字 result，更长 multi），“ · ” 分隔符不计入。
+export function compactTierFor(label: string, completed: boolean): CompactTier {
+  if (completed) return "result";
+  const length = [...label.replace(" · ", "")].length;
+  return length <= 3 ? "run" : length <= 5 ? "result" : "multi";
+}
 export function sessionLabel(session: Session): string {
   return effectiveAttention(session) === "permission" ? "等待审批" : copy[session.activity ?? "thinking"].expanded;
 }
@@ -102,6 +110,7 @@ export type IslandPresentation = {
   attention: "none" | "permission" | "quota";
   feedback: "none" | TurnResultKind;
   compactLabel: string;
+  compactTier: CompactTier;
   expandedTitle: string;
   expandedSubtitle: string;
   orb: { state: OrbState; speed: number };
@@ -214,7 +223,7 @@ export function deriveIslandPresentation(
   let selectedOrb: { state: OrbState; speed: number } = idleOrb;
   if (primarySession) {
     const activity = primarySession.activity ?? "thinking";
-    compactLabel = activeAgents > 1 ? "多代理运行" : copy[activity].compact;
+    compactLabel = activeAgents > 1 ? "多代理" : copy[activity].compact;
     expandedTitle = activeAgents > 1 ? "多个子代理运行中" : copy[activity].expanded;
     expandedSubtitle = activeAgents > 1 ? `${activeAgents} 个子代理` : "当前会话";
     selectedOrb = activeAgents > 1 || sessions.length > 1 ? { state: "weaving", speed: 1 } : orb[activity];
@@ -232,7 +241,7 @@ export function deriveIslandPresentation(
     }
   } else if (primaryResult) {
     feedback = primaryResult.result.kind;
-    compactLabel = primaryResult.result.kind === "completed" ? "已完成" : "已中断";
+    compactLabel = primaryResult.result.kind === "completed" ? "完成" : "已中断";
     expandedTitle = primaryResult.result.kind === "completed" ? "任务已完成" : "任务已中断";
     expandedSubtitle = "本次任务已结束";
     if (primaryResult.result.kind === "completed" && token?.status === "ready" && token.taskTokens != null)
@@ -273,6 +282,7 @@ export function deriveIslandPresentation(
     attention,
     feedback,
     compactLabel,
+    compactTier: compactTierFor(compactLabel, feedback === "completed"),
     expandedTitle,
     expandedSubtitle,
     isIdle,

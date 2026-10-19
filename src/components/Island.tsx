@@ -41,6 +41,7 @@ export function Island({
       className={`island layout-${view.layout} ${expanded ? "expanded" : ""}`}
       data-attention={view.attention}
       data-feedback={view.feedback}
+      data-tier={view.compactTier}
       style={expanded ? { height } : undefined}
       tabIndex={0}
       onMouseEnter={enter}
