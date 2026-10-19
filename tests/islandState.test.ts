@@ -73,7 +73,7 @@ test("layout follows active sessions without frontend stale filtering", () => {
   assert.equal(derive([session("s")]).layout, "single");
   assert.equal(derive([session("s"), session("b")]).layout, "multi");
   assert.equal(derive([session("s", "executing")], [], null, {}, now + 11 * 60_000).layout, "single");
-  assert.equal(derive([session("s")]).compactLabel, "思考中…");
+  assert.equal(derive([session("s")]).compactLabel, "正在思考中");
   assert.equal(derive([session("s", "compacting")]).expandedTitle, "正在压缩上下文…");
 });
 test("permission retains layout and wins over quota", () => {
@@ -140,6 +140,8 @@ test("completed context and token loading states", () => {
   const ready: TokenUsageState = { status: "ready", taskTokens: 12_600, sessionTokens: 20_000, readyAt: now };
   assert.equal(derive([], [done], null, { [key]: ready }).compactLabel, "完成 · 12.6k");
   assert.equal(derive([], [done], null, { [key]: ready }).showTokenSummary, true);
+  assert.equal(derive([], [done], null, { [key]: { ...ready, taskTokens: 368_420 } }).compactLabel, "完成 · 368k");
+  assert.equal(derive([], [done], null, { [key]: { ...ready, taskTokens: 3_640_000 } }).compactLabel, "完成 · 3.6M");
 });
 test("normal and token ready result expiry use one-shot deadlines", () => {
   const done = result();

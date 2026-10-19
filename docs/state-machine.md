@@ -83,7 +83,7 @@ stateDiagram-v2
 
 `nativeOperations.ts` 提供可注入原生接口与计时器的执行函数。交互转换时递增队列版本；等待尺寸或点击区域完成后再次校验版本，组件卸载后停止后续操作，避免旧操作在状态绕回同名阶段时继续执行。收起优先响应高度过渡结束事件，兜底恢复原生窗口的延迟保持为 420 毫秒，减少动态效果时为 190 毫秒。开发构建仅额外允许 `384×550` 的 Debug 点击区域，Release 仍限制在 `100..=390 × 40..=424`。
 
-DOM 同时保留 `layout-*` 与 `expanded` 类，并以 `data-attention`、`data-feedback` 表示其它维度。CSS 不自行推断业务状态。`styles/tokens.css` 与 `domain/metrics.ts` 中的尺寸由跨文件测试约束：2px 根内边距将 96/200px 可见宽度对应到 100/204px 点击区；380px 展开宽度对应 384px 点击区，最大高度 420px 对应 424px 原生上限。64px Orb 画布仍以 scale(.75) 呈现为 48px。`useReducedMotion()` 订阅系统设置变化，并在卸载时清理。
+DOM 同时保留 `layout-*` 与 `expanded` 类，并以 `data-attention`、`data-feedback` 表示其它维度。CSS 不自行推断业务状态。`styles/tokens.css` 与 `domain/metrics.ts` 中的尺寸由跨文件测试约束：2px 根内边距将 96/164px 可见宽度对应到 100/168px 点击区；380px 展开宽度对应 384px 点击区，最大高度 420px 对应 424px 原生上限。64px Orb 画布仍以 scale(.75) 呈现为 48px。`useReducedMotion()` 订阅系统设置变化，并在卸载时清理。
 
 开发模式下通过 `?debugIsland` 打开 Presentation Playground；它构造 ActivitySnapshot、UsageSnapshot 和 TokenUsageState，仍经同一个 `deriveIslandPresentation()` 渲染，不影响真实额度和 Hook 数据。Rust 状态机测试位于 `activity/tests.rs`；Presentation 与 Interaction 测试位于 `tests/islandState.test.ts`、`tests/presentation.test.ts`。真实窗口尺寸、Hit Region、Hook 信任与自动启动仍需在 Windows 运行环境中回归。
 

@@ -277,7 +277,7 @@ test("Completed expanded then expired collapses directly to the live minimal tar
   const { view, detailView } = selectInteractionViews(f.state, live, retained);
   assert.equal(view.layout, "minimal");
   assert.equal(detailView.primaryResult?.result, done);
-  f.compactSize({ width: view.layout === "minimal" ? 100 : 204, height: 40 });
+  f.compactSize({ width: view.layout === "minimal" ? 100 : 168, height: 40 });
   const collapse = f.collapse();
   await flush();
   resize.resolve();

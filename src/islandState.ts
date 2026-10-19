@@ -45,13 +45,13 @@ export function effectiveAttention(session: Session): Attention {
 const RESULT_DISPLAY_MS = 3_000;
 const TOKEN_READY_DISPLAY_MS = 2_800;
 const copy: Record<Activity, { compact: string; expanded: string }> = {
-  thinking: { compact: "思考中…", expanded: "正在思考…" },
-  working: { compact: "处理中…", expanded: "正在处理…" },
-  searching: { compact: "搜索中…", expanded: "正在搜索…" },
-  editing: { compact: "编辑中…", expanded: "正在编辑文件…" },
-  executing: { compact: "运行中…", expanded: "正在运行命令…" },
-  connecting: { compact: "连接中…", expanded: "正在连接…" },
-  compacting: { compact: "压缩中…", expanded: "正在压缩上下文…" },
+  thinking: { compact: "正在思考中", expanded: "正在思考…" },
+  working: { compact: "正在处理中", expanded: "正在处理…" },
+  searching: { compact: "正在搜索中", expanded: "正在搜索…" },
+  editing: { compact: "正在编辑中", expanded: "正在编辑文件…" },
+  executing: { compact: "正在运行中", expanded: "正在运行命令…" },
+  connecting: { compact: "正在连接中", expanded: "正在连接…" },
+  compacting: { compact: "正在压缩中", expanded: "正在压缩上下文…" },
 };
 const orb: Record<Activity, { state: OrbState; speed: number }> = {
   thinking: { state: "solving", speed: 1 },
@@ -63,8 +63,17 @@ const orb: Record<Activity, { state: OrbState; speed: number }> = {
   compacting: { state: "composing", speed: 1 },
 };
 const idleOrb = { state: "breathing" as const, speed: 0.65 };
-const compactTokens = (value: number) =>
-  value >= 1000 ? `${(value / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(value);
+const compactTokens = (value: number) => {
+  if (value >= 999_500) {
+    const millions = value / 1_000_000;
+    return `${millions.toFixed(millions >= 100 ? 0 : 1).replace(/\.0$/, "")}M`;
+  }
+  if (value >= 1_000) {
+    const thousands = value / 1_000;
+    return `${thousands.toFixed(thousands >= 100 ? 0 : 1).replace(/\.0$/, "")}k`;
+  }
+  return String(value);
+};
 export function sessionLabel(session: Session): string {
   return effectiveAttention(session) === "permission" ? "等待审批" : copy[session.activity ?? "thinking"].expanded;
 }
@@ -205,7 +214,7 @@ export function deriveIslandPresentation(
   let selectedOrb: { state: OrbState; speed: number } = idleOrb;
   if (primarySession) {
     const activity = primarySession.activity ?? "thinking";
-    compactLabel = activeAgents > 1 ? "多代理…" : copy[activity].compact;
+    compactLabel = activeAgents > 1 ? "多代理运行" : copy[activity].compact;
     expandedTitle = activeAgents > 1 ? "多个子代理运行中" : copy[activity].expanded;
     expandedSubtitle = activeAgents > 1 ? `${activeAgents} 个子代理` : "当前会话";
     selectedOrb = activeAgents > 1 || sessions.length > 1 ? { state: "weaving", speed: 1 } : orb[activity];

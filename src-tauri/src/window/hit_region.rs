@@ -61,7 +61,7 @@ mod tests {
     use super::*;
     #[test]
     fn hit_region_bounds_keep_debug_exception_out_of_release() {
-        for (width, height) in [(100.0, 40.0), (204.0, 42.0), (384.0, 424.0)] {
+        for (width, height) in [(100.0, 40.0), (168.0, 42.0), (384.0, 424.0)] {
             assert!(valid_hit_region(width, height, false));
         }
         assert!(valid_hit_region(384.0, 550.0, true));

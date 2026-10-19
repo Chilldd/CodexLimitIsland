@@ -12,7 +12,7 @@
   --morph-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --island-padding: 2px;
   --minimal-width: 96px;
-  --compact-width: 200px;
+  --compact-width: 164px;
   --expanded-width: 380px;
   --expanded-max-height: 420px;
 
@@ -59,7 +59,7 @@
   /* 圆角：展开态与内层卡片保持同心。 */
   --radius-minimal: 18px;
   --radius-compact: 19px;
-  --radius-expanded: 40px;
-  --radius-card: 24px;
+  --radius-expanded: 28px;
+  --radius-card: 14px;
   --radius-pill: 999px;
 }

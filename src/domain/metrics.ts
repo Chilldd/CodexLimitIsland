@@ -1,7 +1,7 @@
 export const ROOT_PADDING = 2;
 export const WINDOW_WIDTH = 390;
 export const MINIMAL_WIDTH = 96;
-export const COMPACT_WIDTH = 200;
+export const COMPACT_WIDTH = 164;
 export const EXPANDED_WIDTH = 380;
 export const EXPANDED_MAX_HEIGHT = 420;
 export const EXPANDED_HIT_WIDTH = EXPANDED_WIDTH + ROOT_PADDING * 2;

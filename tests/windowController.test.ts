@@ -95,10 +95,10 @@ test("new compact data arriving while shrinking controls the final hit region", 
   f.native.setSize.mockImplementationOnce(() => pending.promise);
   const shrinking = f.controller.finishCollapse();
   await flush();
-  f.update({ compact: { width: 204, height: 42 } });
+  f.update({ compact: { width: 168, height: 42 } });
   pending.resolve();
   await shrinking;
-  expect(f.native.setHitRegion).toHaveBeenLastCalledWith(204, 42);
+  expect(f.native.setHitRegion).toHaveBeenLastCalledWith(168, 42);
   expect(f.machine.current()).toBe("compact");
   f.controller.dispose();
 });
@@ -169,10 +169,10 @@ test("expanded content height changes serialize and compact updates do not resiz
   await flush();
   expect(f.native.setSize).toHaveBeenLastCalledWith(390, 424);
   f.controller.collapse();
-  f.update({ compact: { width: 204, height: 42 } });
+  f.update({ compact: { width: 168, height: 42 } });
   expect(f.native.setSize).toHaveBeenCalledTimes(3);
   await f.controller.finishCollapse();
-  expect(f.native.setHitRegion).toHaveBeenLastCalledWith(204, 42);
+  expect(f.native.setHitRegion).toHaveBeenLastCalledWith(168, 42);
   f.controller.dispose();
 });
 

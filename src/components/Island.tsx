@@ -66,7 +66,14 @@ export function Island({
         </div>
         <div className="compact-copy" aria-hidden={expanded || view.layout === "minimal"}>
           <span className="activity-label" key={view.compactLabel} title={view.compactLabel}>
-            {view.compactLabel}
+            {view.compactLabel.includes(" · ") ? (
+              <>
+                <span className="activity-main">{view.compactLabel.split(" · ")[0]}</span>
+                <small className="activity-sub">{view.compactLabel.split(" · ")[1]}</small>
+              </>
+            ) : (
+              <span className="activity-main">{view.compactLabel}</span>
+            )}
           </span>
           <span className="compact-limit">
             <span>{view.compactUsage.label}</span>
