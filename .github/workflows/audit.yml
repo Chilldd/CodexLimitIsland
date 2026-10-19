@@ -1,0 +1,47 @@
+name: Dependency audit
+
+# 依赖安全审计：只提示，不作为合并门禁（新公告可能让无关提交变红）。
+# 每周一定时运行；锁文件变化或手动触发时也会运行。
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+  push:
+    paths:
+      - package-lock.json
+      - src-tauri/Cargo.lock
+      - .github/workflows/audit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  npm-audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      # 只读取 package-lock.json，不需要安装依赖。
+      - name: npm audit
+        run: npm audit --audit-level=high
+
+  cargo-audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: cargo audit
+        run: cargo audit --file src-tauri/Cargo.lock
