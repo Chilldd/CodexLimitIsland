@@ -6,6 +6,7 @@ export const COMPACT_WIDTH = 156;
 export const COMPACT_MULTI_WIDTH = 172;
 export const EXPANDED_WIDTH = 380;
 export const EXPANDED_MAX_HEIGHT = 420;
+export const SESSION_ROW_HEIGHT = 40;
 export const EXPANDED_HIT_WIDTH = EXPANDED_WIDTH + ROOT_PADDING * 2;
 export const DEBUG_HEIGHT = 550;
 export const MORPH_MS = 340;
@@ -23,4 +24,4 @@ export const compactSize = (layout: "minimal" | "single" | "multi", tier: Compac
   height: (layout === "minimal" ? 36 : 38) + ROOT_PADDING * 2,
 });
 export const expandedHeight = (rowCount: number, showTokenSummary: boolean) =>
-  Math.min(EXPANDED_MAX_HEIGHT, rowCount > 1 ? 164 + rowCount * 48 : showTokenSummary ? 204 : 154);
+  Math.min(EXPANDED_MAX_HEIGHT, rowCount > 1 ? 164 + rowCount * SESSION_ROW_HEIGHT : showTokenSummary ? 204 : 154);
