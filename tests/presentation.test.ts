@@ -11,6 +11,7 @@ import {
   EXPANDED_WIDTH,
   EXPANDED_HIT_WIDTH,
   EXPANDED_MAX_HEIGHT,
+  SESSION_ROW_HEIGHT,
   WINDOW_WIDTH,
   DEBUG_HEIGHT,
   MORPH_MS,
@@ -138,6 +139,7 @@ test("CSS tokens, visible size, native hit regions and Tauri/Rust bounds stay al
     "compact-width": COMPACT_WIDTH,
     "expanded-width": EXPANDED_WIDTH,
     "expanded-max-height": EXPANDED_MAX_HEIGHT,
+    "session-row-height": SESSION_ROW_HEIGHT,
   }))
     expect(css).toMatch(new RegExp(`--${key}:\\s*${value}px`));
   expect(css).toMatch(new RegExp(`--morph-duration:\\s*${MORPH_MS}ms`));
@@ -146,9 +148,12 @@ test("CSS tokens, visible size, native hit regions and Tauri/Rust bounds stay al
   expect(EXPANDED_HIT_WIDTH).toBe(384);
   const appCss = readFileSync(resolve("src/App.css"), "utf8");
   expect(appCss).toMatch(/width:\s*var\(--expanded-width\)/);
+  expect(appCss).toMatch(/height:\s*var\(--session-row-height\)/);
   for (const width of [MINIMAL_WIDTH, COMPACT_WIDTH, EXPANDED_WIDTH]) expect(appCss).not.toContain(`width: ${width}px`);
   expect(expandedHeight(1, false)).toBe(154);
   expect(expandedHeight(1, true)).toBe(204);
+  expect(expandedHeight(2, false)).toBe(244);
+  expect(expandedHeight(3, false)).toBe(284);
   expect(expandedHeight(9, false)).toBe(420);
   const config = JSON.parse(readFileSync(resolve("src-tauri/tauri.conf.json"), "utf8"));
   expect(config.app.windows[0]).toMatchObject({ width: WINDOW_WIDTH, height: compactSize("single").height });

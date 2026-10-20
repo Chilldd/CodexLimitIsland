@@ -97,11 +97,12 @@ export function createDebugScenario(name: DebugScenarioName, now: number): Debug
   if (name === "Expired Completed Expanded")
     snapshot.recentResults = [{ ...result("CodexLimitIsland"), finishedAt: now - 20_000 }];
   if (name === "2 Active Sessions" || name === "2 Active + 1 Completed")
-    snapshot.sessions = [session("CodexLimitIsland"), session("OtherProject", "editing")];
+    snapshot.sessions = [session("CodexLimitIsland"), { ...session("OtherProject", "editing"), model: "gpt-6.1-sol" }];
   if (name === "1 Active + 1 Completed") snapshot.sessions = [session("CodexLimitIsland")];
   if (name === "1 Active + 1 Completed" || name === "2 Active + 1 Completed")
-    snapshot.recentResults = [result("FinishedProject")];
-  if (name === "2 Completed") snapshot.recentResults = [result("FinishedProject"), result("OtherProject")];
+    snapshot.recentResults = [{ ...result("FinishedProject"), model: "gpt-6-astra" }];
+  if (name === "2 Completed")
+    snapshot.recentResults = [result("FinishedProject"), { ...result("OtherProject"), model: null }];
   if (name === "Multi Agent") snapshot.sessions = [session("CodexLimitIsland", "working", [agent("a"), agent("b")])];
   if (name === "Quota Exhausted" || name === "Quota + Permission")
     usage.fiveHour = { remainingPercent: 0, resetsAt: null };

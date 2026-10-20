@@ -93,6 +93,7 @@ export type SessionRowView = {
   title: string;
   tooltip: string;
   subtitle: string;
+  model: string | null;
   attention?: Attention;
   feedback?: TurnResultKind;
   elapsed: ElapsedView;
@@ -314,6 +315,7 @@ export function deriveIslandPresentation(
           title: session.project || session.cwd?.split(/[\\/]/).pop() || "Codex 会话",
           tooltip: session.project ?? session.cwd ?? "",
           subtitle: sessionLabel(session) + (agents > 1 ? ` · ${agents} 个子代理` : ""),
+          model: session.model,
           attention: effectiveAttention(session),
           elapsed: { from: session.startedAt, to: null },
         };
@@ -324,6 +326,7 @@ export function deriveIslandPresentation(
         title: result.project || "Codex 会话",
         tooltip: result.project ?? "",
         subtitle: label,
+        model: result.model,
         feedback: result.kind,
         elapsed: { from: result.startedAt, to: result.finishedAt },
       })),

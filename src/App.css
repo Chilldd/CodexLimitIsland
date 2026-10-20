@@ -618,7 +618,7 @@ button {
 }
 
 .session-row {
-  height: 48px;
+  height: var(--session-row-height);
   display: flex;
   align-items: center;
   gap: 9px;
@@ -673,7 +673,7 @@ button {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
 }
 
 .session-text strong,
@@ -702,6 +702,25 @@ button {
   font-variant-numeric: tabular-nums;
   min-width: 4ch;
   text-align: right;
+}
+
+.session-meta {
+  min-width: 0;
+  max-width: 44%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  color: var(--text-3);
+  font-size: var(--font-xs);
+  line-height: var(--leading-tight);
+}
+
+.session-model {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .session-link {

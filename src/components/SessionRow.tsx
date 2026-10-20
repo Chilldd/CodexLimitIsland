@@ -26,7 +26,14 @@ export function SessionRow({ row, navigation }: { row: SessionRowView; navigatio
         <strong title={row.tooltip}>{row.title}</strong>
         <small>{row.subtitle}</small>
       </span>
-      {navigation.openingSession === row.sessionId ? <time>打开中…</time> : <Elapsed {...row.elapsed} />}
+      <span className="session-meta">
+        {row.model && (
+          <span className="session-model" title={row.model}>
+            {row.model}
+          </span>
+        )}
+        {navigation.openingSession === row.sessionId ? <time>打开中…</time> : <Elapsed {...row.elapsed} />}
+      </span>
       <span className="session-open-icon" aria-hidden="true">
         <JumpIcon />
       </span>
