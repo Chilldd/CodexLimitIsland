@@ -24,4 +24,4 @@ export const compactSize = (layout: "minimal" | "single" | "multi", tier: Compac
   height: (layout === "minimal" ? 36 : 38) + ROOT_PADDING * 2,
 });
 export const expandedHeight = (rowCount: number, showTokenSummary: boolean) =>
-  Math.min(EXPANDED_MAX_HEIGHT, rowCount > 1 ? 164 + rowCount * SESSION_ROW_HEIGHT : showTokenSummary ? 204 : 154);
+  Math.min(EXPANDED_MAX_HEIGHT, rowCount > 1 ? 194 + rowCount * SESSION_ROW_HEIGHT : showTokenSummary ? 228 : 186);

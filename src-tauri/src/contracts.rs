@@ -1,6 +1,7 @@
 use crate::{
     activity::model::*,
     settings::LimitDisplayWindow,
+    system_resources::{ProcessMetrics, SystemResourceSnapshot},
     token_usage::TokenUsage,
     usage::{LimitWindow, UsageSnapshot},
 };
@@ -21,6 +22,8 @@ fn frontend_contract_matches_rust() {
         UsageSnapshot::decl(&config),
         LimitDisplayWindow::decl(&config),
         TokenUsage::decl(&config),
+        ProcessMetrics::decl(&config),
+        SystemResourceSnapshot::decl(&config),
     ];
     let output = format!(
         "// 由 Rust ts-rs 生成；运行 npm.cmd run contracts:generate，请勿手工编辑。\n{}\n",

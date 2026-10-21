@@ -22,3 +22,7 @@ export type UsageSnapshot = { fiveHour: LimitWindow | null, weekly: LimitWindow 
 export type LimitDisplayWindow = "fiveHour" | "week";
 
 export type TokenUsage = { taskTokens: number | null, sessionTokens: number | null, };
+
+export type ProcessMetrics = { cpu_percent: number, memory_bytes: number, };
+
+export type SystemResourceSnapshot = { total: ProcessMetrics, app: ProcessMetrics, tasks: ProcessMetrics, sample_time_ms: number, };

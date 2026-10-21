@@ -10,6 +10,7 @@ import { useInteractionMachine } from "./hooks/useInteractionMachine";
 import { useIslandWindow } from "./hooks/useIslandWindow";
 import { useHorizontalDrag } from "./hooks/useHorizontalDrag";
 import { useSessionNavigation } from "./hooks/useSessionNavigation";
+import { useSystemResources } from "./hooks/useSystemResources";
 import { debugEnabled, useDebugPresentation } from "./hooks/useDebugPresentation";
 import { ROOT_PADDING, compactSize, expandedHeight } from "./domain/metrics";
 import { nativeWindow, type IslandNativeWindow } from "./nativeWindow";
@@ -75,6 +76,7 @@ function App({ native = nativeWindow }: { native?: IslandNativeWindow }) {
     controller.collapse,
   );
   const expanded = machine.phase === "expanded";
+  const { snapshot: systemSnapshot, cpuHistory } = useSystemResources(expanded);
   useEffect(() => {
     const prevent = (event: MouseEvent) => event.preventDefault();
     document.addEventListener("contextmenu", prevent);
@@ -89,6 +91,8 @@ function App({ native = nativeWindow }: { native?: IslandNativeWindow }) {
         compactWidth={compactIslandWidth}
         onMeasureCompactWidth={onMeasureCompactWidth}
         expanded={expanded}
+        systemSnapshot={systemSnapshot}
+        cpuHistory={cpuHistory}
         orbTransitioning={orbTransitioning}
         reducedMotion={reducedMotion}
         navigation={{

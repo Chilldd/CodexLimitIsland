@@ -1,18 +1,25 @@
 import type { IslandPresentation } from "../islandState";
+import type { SystemResourceSnapshot } from "../generated/contracts";
 import { exactTokens } from "../domain/format";
 import { SessionRow, type NavigationView } from "./SessionRow";
 import { UsagePanel } from "./UsagePanel";
 import { Elapsed } from "./Elapsed";
 import { JumpIcon } from "./JumpIcon";
 import { IdlePromptTicker } from "./IdlePromptTicker";
+import { SystemResourceRow } from "./SystemResourceRow";
+
 export function ExpandedContent({
   view,
   navigation,
   expanded,
+  systemSnapshot,
+  cpuHistory,
 }: {
   view: IslandPresentation;
   navigation: NavigationView;
   expanded: boolean;
+  systemSnapshot?: SystemResourceSnapshot | null;
+  cpuHistory?: number[];
 }) {
   const { headline, meta } = view;
   return (
@@ -69,6 +76,7 @@ export function ExpandedContent({
           )}
         </div>
       </div>
+      <SystemResourceRow snapshot={systemSnapshot ?? null} cpuHistory={cpuHistory ?? []} />
       {view.showTokenSummary && view.token?.status === "ready" && (
         <div className="token-summary">
           <div>

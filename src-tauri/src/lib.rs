@@ -9,6 +9,7 @@ mod launch;
 mod session_id;
 mod settings;
 mod sync_state;
+pub(crate) mod system_resources;
 mod token_usage;
 mod tray;
 mod usage;
@@ -40,7 +41,10 @@ pub fn run() {
             hook::server::read_activity,
             token_usage::read_token_usage,
             codex_navigation::open_codex_session,
-            window::set_window_hit_region
+            window::set_window_hit_region,
+            system_resources::start_resource_sampling,
+            system_resources::stop_resource_sampling,
+            system_resources::read_resource_snapshot
         ])
         .on_window_event(|window, event| {
             #[cfg(windows)]
@@ -94,6 +98,7 @@ pub fn run() {
             let (usage, notifications) = usage::UsageService::new();
             app.manage(usage.clone());
             app.manage(token_usage::TokenUsageReader::default());
+            app.manage(system_resources::ResourceMonitor::new(app.handle().clone()));
             let activity = hook::server::ActivityState::default();
             app.manage(activity.clone());
             hook::server::start_listener(app.handle().clone(), activity, usage.refresher.clone())
@@ -115,6 +120,9 @@ pub fn run() {
     app.run(|app, event| {
         if let tauri::RunEvent::Exit = event {
             app.state::<usage::UsageService>().reset();
+            if app.state::<system_resources::ResourceMonitor>().stop().is_err() {
+                diagnostics::log("资源采样停止失败", None);
+            }
         }
     });
 }

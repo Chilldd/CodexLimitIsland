@@ -6,6 +6,7 @@ import {
   type TransitionEventHandler,
 } from "react";
 import type { IslandPresentation } from "../islandState";
+import type { SystemResourceSnapshot } from "../generated/contracts";
 import { OrbStack } from "./OrbStack";
 import { ExpandedContent } from "./ExpandedContent";
 import type { NavigationView } from "./SessionRow";
@@ -14,6 +15,8 @@ type Props = {
   detail: IslandPresentation;
   navigation: NavigationView;
   expanded: boolean;
+  systemSnapshot?: SystemResourceSnapshot | null;
+  cpuHistory?: number[];
   height: number;
   compactWidth?: number;
   onMeasureCompactWidth?: (width: number) => void;
@@ -35,6 +38,8 @@ export function Island({
   detail,
   navigation,
   expanded,
+  systemSnapshot,
+  cpuHistory,
   height,
   compactWidth,
   onMeasureCompactWidth,
@@ -116,7 +121,13 @@ export function Island({
             <strong className={view.compactUsage.tone}>{view.compactUsage.percent}</strong>
           </span>
         </div>
-        <ExpandedContent view={detail} navigation={navigation} expanded={expanded} />
+        <ExpandedContent
+          view={detail}
+          navigation={navigation}
+          expanded={expanded}
+          systemSnapshot={systemSnapshot}
+          cpuHistory={cpuHistory}
+        />
       </div>
     </main>
   );
