@@ -99,6 +99,8 @@ export type SessionRowView = {
   elapsed: ElapsedView;
 };
 export type UsageRowView = {
+  window: LimitDisplayWindow;
+  selected: boolean;
   label: string;
   tone: ReturnType<typeof tone>;
   percent: string;
@@ -351,10 +353,12 @@ export function deriveIslandPresentation(
           },
     usageRows: (
       [
-        ["5 小时剩余", usage?.fiveHour ?? null],
-        ["每周剩余", usage?.weekly ?? null],
+        ["5 小时剩余", usage?.fiveHour ?? null, "fiveHour" as const],
+        ["每周剩余", usage?.weekly ?? null, "week" as const],
       ] as const
-    ).map(([label, value]) => ({
+    ).map(([label, value, windowKey]) => ({
+      window: windowKey,
+      selected: limitWindow === windowKey,
       label,
       tone: tone(value),
       percent: percent(value),

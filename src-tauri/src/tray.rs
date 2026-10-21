@@ -11,6 +11,10 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 /// 托盘右键菜单：已设置自定义路径时才启用“恢复默认路径”，并支持自由选择展示 5h 还是 week 限额。
 fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let current_window = settings::limit_display_window();
+    let refresh_limits = MenuItem::with_id(app, "refresh-limits", "立即刷新额度", true, None::<&str>)?;
+    let reset_pos = MenuItem::with_id(app, "reset-window-position", "重置窗口位置", true, None::<&str>)?;
+    let config_hook = MenuItem::with_id(app, "configure-codex-hook", "配置 Codex Hook…", true, None::<&str>)?;
+
     let set_path = MenuItem::with_id(app, "set-codex-path", "设置 Codex 程序路径…", true, None::<&str>)?;
     let reset_path = MenuItem::with_id(
         app,
@@ -40,10 +44,14 @@ fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     Menu::with_items(
         app,
         &[
-            &set_path,
-            &reset_path,
+            &refresh_limits,
             &PredefinedMenuItem::separator(app)?,
             &display_menu,
+            &reset_pos,
+            &PredefinedMenuItem::separator(app)?,
+            &config_hook,
+            &set_path,
+            &reset_path,
             &PredefinedMenuItem::separator(app)?,
             &quit,
         ],
@@ -183,11 +191,30 @@ fn reset_codex_path(app: &tauri::AppHandle) {
     app.state::<UsageService>().refresher.request();
 }
 
-fn select_limit_window(app: &tauri::AppHandle, window: settings::LimitDisplayWindow) {
+pub(crate) fn apply_limit_window(app: &tauri::AppHandle, window: settings::LimitDisplayWindow) -> Result<(), String> {
     if settings::limit_display_window() == window {
-        return;
+        return Ok(());
     }
-    if let Err(error) = settings::save_limit_display_window(window) {
+    settings::save_limit_display_window(window)?;
+    diagnostics::log("已更新展示限额设置", None);
+    let handle = app.clone();
+    if let Err(error) = app.run_on_main_thread(move || refresh_tray_menu(&handle)) {
+        diagnostics::log("调度托盘菜单刷新失败", Some(&error.to_string()));
+    }
+    app.emit("limit-window-changed", window).map_err(|error| {
+        diagnostics::log("发送展示限额变更事件失败", Some(&error.to_string()));
+        error.to_string()
+    })?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_limit_display_window(app: tauri::AppHandle, window: settings::LimitDisplayWindow) -> Result<(), String> {
+    apply_limit_window(&app, window)
+}
+
+fn select_limit_window(app: &tauri::AppHandle, window: settings::LimitDisplayWindow) {
+    if let Err(error) = apply_limit_window(app, window) {
         diagnostics::log("保存展示限额设置失败", Some(&error));
         notify(
             app,
@@ -195,12 +222,6 @@ fn select_limit_window(app: &tauri::AppHandle, window: settings::LimitDisplayWin
             "保存设置失败",
             format!("{error}\n\n设置未保存。"),
         );
-        return;
-    }
-    diagnostics::log("已更新展示限额设置", None);
-    refresh_tray_menu(app);
-    if let Err(error) = app.emit("limit-window-changed", window) {
-        diagnostics::log("发送展示限额变更事件失败", Some(&error.to_string()));
     }
 }
 
@@ -217,6 +238,47 @@ pub(crate) fn on_menu(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
                 );
             }
         }
+        "refresh-limits" => {
+            app.state::<UsageService>().refresh_now(app);
+        }
+        "reset-window-position" => {
+            if let Err(error) = settings::clear_window_x() {
+                diagnostics::log("清除保存的窗口横坐标失败", Some(&error));
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                let window_clone = window.clone();
+                if let Err(error) = app.run_on_main_thread(move || {
+                    if let Err(error) = crate::window::place_center(&window_clone) {
+                        diagnostics::log("重置窗口位置失败", Some(&error.to_string()));
+                    }
+                }) {
+                    diagnostics::log("调度重置窗口位置失败", Some(&error.to_string()));
+                }
+            }
+        }
+        "configure-codex-hook" => match crate::hook::config::configure_codex_hooks() {
+            Ok(path) => {
+                diagnostics::log("已更新 Codex Hook 配置", None);
+                notify(
+                    app,
+                    MessageDialogKind::Info,
+                    "Codex Hook 配置成功",
+                    format!(
+                        "已成功将 Hook 规则写入：\n{}\n\n请完全退出并重启 Codex App，并在首次触发时点击确认信任该 Hook 命令。",
+                        path.display()
+                    ),
+                );
+            }
+            Err(error) => {
+                diagnostics::log("配置 Codex Hook 失败", None);
+                notify(
+                    app,
+                    MessageDialogKind::Error,
+                    "配置 Codex Hook 失败",
+                    format!("未能写入 Hook 配置：\n{error}"),
+                );
+            }
+        },
         "set-codex-path" => choose_codex_path(app.clone()),
         "reset-codex-path" => reset_codex_path(app),
         "limit-window-5h" => select_limit_window(app, settings::LimitDisplayWindow::FiveHour),

@@ -95,6 +95,9 @@ export function useHorizontalDrag(native: IslandNativeWindow, isCompact: () => b
     const current = state.current;
     if (current.pending !== event.pointerId) return;
     current.pending = null;
+    if (current.drag?.moved && current.target != null) {
+      void native.savePosition?.(Math.round(current.target)).catch((error) => console.error("窗口位置保存失败", error));
+    }
     current.drag = null;
     event.currentTarget.releasePointerCapture(event.pointerId);
     current.clickTimer = window.setTimeout(() => {

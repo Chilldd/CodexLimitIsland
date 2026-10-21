@@ -33,7 +33,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             usage::read_limits,
+            usage::refresh_limits,
             settings::read_limit_display_window,
+            settings::save_window_position,
+            tray::set_limit_display_window,
             hook::server::read_activity,
             token_usage::read_token_usage,
             codex_navigation::open_codex_session,

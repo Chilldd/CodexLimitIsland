@@ -1,6 +1,9 @@
 use super::{AppServer, UsageSnapshot};
 use std::{
-    sync::{mpsc, Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc, Mutex,
+    },
     time::Duration,
 };
 use tauri::Emitter;
@@ -16,6 +19,7 @@ impl UsageRefresher {
 #[derive(Clone)]
 pub(crate) struct UsageService {
     server: Arc<Mutex<Option<AppServer>>>,
+    refreshing: Arc<AtomicBool>,
     pub(crate) refresher: UsageRefresher,
 }
 impl UsageService {
@@ -24,6 +28,7 @@ impl UsageService {
         (
             Self {
                 server: Arc::default(),
+                refreshing: Arc::default(),
                 refresher: UsageRefresher(sender),
             },
             rx,
@@ -31,6 +36,34 @@ impl UsageService {
     }
     pub(crate) fn reset(&self) {
         *crate::sync_state::lock(&self.server) = None;
+    }
+    pub(crate) fn refresh_now(&self, app: &tauri::AppHandle) {
+        if self
+            .refreshing
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
+        }
+        let app = app.clone();
+        let service = self.clone();
+        std::thread::spawn(move || {
+            let result = service.read();
+            service.refreshing.store(false, Ordering::Release);
+            match result {
+                Ok(snapshot) => {
+                    if let Err(error) = app.emit("usage-updated", snapshot) {
+                        crate::diagnostics::log("通知额度更新失败", Some(&error.to_string()));
+                    }
+                }
+                Err(error) => {
+                    crate::diagnostics::log("额度读取失败", Some(&error));
+                    if let Err(error) = app.emit("usage-error", error) {
+                        crate::diagnostics::log("通知额度错误失败", Some(&error.to_string()));
+                    }
+                }
+            }
+        });
     }
     fn read(&self) -> Result<UsageSnapshot, String> {
         let mut server = crate::sync_state::lock(&self.server);
@@ -82,6 +115,10 @@ pub(crate) async fn read_limits(state: tauri::State<'_, UsageService>) -> Result
     tauri::async_runtime::spawn_blocking(move || service.read())
         .await
         .map_err(|_| "后台额度查询失败".to_string())?
+}
+#[tauri::command]
+pub(crate) fn refresh_limits(app: tauri::AppHandle, state: tauri::State<'_, UsageService>) {
+    state.refresh_now(&app);
 }
 #[cfg(test)]
 mod tests {

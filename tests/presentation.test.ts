@@ -63,7 +63,18 @@ test("Meta, quota tones and ARIA copy preserve existing fallbacks", () => {
   expect(idle.ariaLabel).toBe("Codex 五小时剩余额度 —");
   const normal = deriveIslandPresentation(snapshot(), usage(30), {}, 20_000);
   expect(normal.compactUsage).toEqual({ tone: "warning", percent: "30%", label: "5h" });
-  expect(normal.usageRows[0]).toMatchObject({ label: "5 小时剩余", width: "30%", reset: "重置时间未知" });
+  expect(normal.usageRows[0]).toMatchObject({
+    window: "fiveHour",
+    selected: true,
+    label: "5 小时剩余",
+    width: "30%",
+    reset: "重置时间未知",
+  });
+  expect(normal.usageRows[1]).toMatchObject({
+    window: "week",
+    selected: false,
+    label: "每周剩余",
+  });
   expect(normal.expandedSubtitle).toBe(WORK_IDLE_PROMPTS[0]);
   expect(normal.meta).toMatchObject({ label: "" });
   const countdown = deriveIslandPresentation(
@@ -95,6 +106,8 @@ test("Meta, quota tones and ARIA copy preserve existing fallbacks", () => {
   expect(weeklyCountdown.expandedSubtitle).toBe(WORK_IDLE_PROMPTS[0]);
   expect(weeklyCountdown.meta).toMatchObject({ label: "" });
   expect(weeklyCountdown.ariaLabel).toBe("Codex 每周剩余额度 80%");
+  expect(weeklyCountdown.usageRows[0]).toMatchObject({ window: "fiveHour", selected: false });
+  expect(weeklyCountdown.usageRows[1]).toMatchObject({ window: "week", selected: true });
   const result = done();
   const ready = { status: "ready" as const, taskTokens: 12_648, sessionTokens: 20_000, readyAt: 20_000 };
   const completed = deriveIslandPresentation(snapshot([], [result]), usage(), { [resultKey(result)]: ready }, 20_000);

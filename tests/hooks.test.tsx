@@ -368,6 +368,34 @@ test("Session and headline navigation buttons stop propagation and keep busy/dis
   expect(toggle).not.toHaveBeenCalled();
 });
 
+test("clicking usage row invokes set_limit_display_window and stops propagation", async () => {
+  const toggle = vi.fn();
+  const view = deriveIslandPresentation(snapshot(), usage(50), {}, 20_000, [], false, "fiveHour");
+  const navigation = { open: vi.fn(), disabled: false, expanded: true, openingSession: null, error: null };
+  const ui = render(
+    <div onClick={toggle}>
+      <ExpandedContent view={view} navigation={navigation} expanded={true} />
+    </div>,
+  );
+
+  const usageRows = ui.container.querySelectorAll(".usage-row");
+  expect(usageRows).toHaveLength(2);
+  expect(usageRows[0].getAttribute("data-selected")).toBe("true");
+  expect(usageRows[1].getAttribute("data-selected")).toBe("false");
+
+  // 点击第二行（每周限额）
+  fireEvent.click(usageRows[1]);
+  expect(toggle).not.toHaveBeenCalled();
+  expect(bridge.invoke).toHaveBeenCalledWith("set_limit_display_window", { window: "week" });
+
+  // 点击第一行（五小时限额）
+  fireEvent.click(usageRows[0]);
+  expect(toggle).not.toHaveBeenCalled();
+  expect(bridge.invoke).toHaveBeenCalledWith("set_limit_display_window", { window: "fiveHour" });
+
+  ui.unmount();
+});
+
 test("drag position preparation finishing after unmount cannot schedule native movement", async () => {
   const native = nativeFixture();
   const pending = deferred<Awaited<ReturnType<typeof native.placement>>>();
@@ -390,6 +418,56 @@ test("drag position preparation finishing after unmount cannot schedule native m
   await preparation;
   await vi.advanceTimersByTimeAsync(1000);
   expect(native.setPosition).not.toHaveBeenCalled();
+});
+
+test("pointerUp saves position when dragged beyond threshold, but skips saving if not moved", async () => {
+  const native = nativeFixture();
+  const hook = renderHook(() => useHorizontalDrag(native, () => true, false));
+  const element = document.createElement("main");
+
+  // 1. 未超过阈值的微小移动：不调用 savePosition
+  await hook.result.current.onPointerDown({
+    button: 0,
+    pointerId: 1,
+    screenX: 100,
+    currentTarget: element,
+  } as unknown as PointerEvent<HTMLElement>);
+
+  hook.result.current.onPointerMove({
+    pointerId: 1,
+    screenX: 101, // delta = (101 - 100) * 2 = 2 < 10 (5 * 2)
+    currentTarget: element,
+  } as unknown as PointerEvent<HTMLElement>);
+
+  hook.result.current.onPointerUp({
+    pointerId: 1,
+    currentTarget: element,
+  } as unknown as PointerEvent<HTMLElement>);
+
+  expect(native.savePosition).not.toHaveBeenCalled();
+
+  // 2. 超过阈值的真实拖拽：调用 savePosition
+  await hook.result.current.onPointerDown({
+    button: 0,
+    pointerId: 2,
+    screenX: 100,
+    currentTarget: element,
+  } as unknown as PointerEvent<HTMLElement>);
+
+  hook.result.current.onPointerMove({
+    pointerId: 2,
+    screenX: 150, // delta = (150 - 100) * 2 = 100 >= 10
+    currentTarget: element,
+  } as unknown as PointerEvent<HTMLElement>);
+
+  hook.result.current.onPointerUp({
+    pointerId: 2,
+    currentTarget: element,
+  } as unknown as PointerEvent<HTMLElement>);
+
+  expect(native.savePosition).toHaveBeenCalledTimes(1);
+  // initial position.x = 200, delta = 100 -> target = 300
+  expect(native.savePosition).toHaveBeenCalledWith(300);
 });
 
 test("useLimitWindow reads initial preference and updates upon limit-window-changed event", async () => {

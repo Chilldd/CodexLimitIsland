@@ -48,6 +48,7 @@ export const nativeFixture = () => ({
   setSize: vi.fn<IslandNativeWindow["setSize"]>(async () => {}),
   setHitRegion: vi.fn<IslandNativeWindow["setHitRegion"]>(async () => {}),
   setPosition: vi.fn<IslandNativeWindow["setPosition"]>(async () => {}),
+  savePosition: vi.fn<NonNullable<IslandNativeWindow["savePosition"]>>(async () => {}),
   placement: vi.fn<IslandNativeWindow["placement"]>(async () => ({
     position: { x: 200, y: 3 },
     monitor: { position: { x: 100, y: 0 }, size: { width: 1000, height: 800 } },

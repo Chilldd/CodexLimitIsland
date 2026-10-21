@@ -21,6 +21,13 @@ pub enum LimitDisplayWindow {
 struct Settings {
     codex_path: Option<String>,
     limit_window: Option<LimitDisplayWindow>,
+    window_x: Option<i32>,
+}
+
+impl Settings {
+    fn is_empty(&self) -> bool {
+        self.codex_path.is_none() && self.limit_window.is_none() && self.window_x.is_none()
+    }
 }
 
 fn config_path() -> Result<PathBuf, String> {
@@ -72,12 +79,43 @@ pub fn clear_codex_path() -> Result<(), String> {
     let path = config_path()?;
     let mut settings = load_at(&path);
     settings.codex_path = None;
-    if settings.limit_window.is_none() {
+    if settings.is_empty() {
         app_paths::clear_at(&path).map_err(|error| format!("删除配置文件失败：{error}"))
     } else {
         let text = serde_json::to_string_pretty(&settings).map_err(|error| format!("序列化配置失败：{error}"))?;
         write_at(&path, &text).map_err(|error| format!("写入配置文件失败：{error}"))
     }
+}
+
+/// 读取用户保存的窗口横坐标位置。
+pub fn configured_window_x() -> Option<i32> {
+    let path = config_path().ok()?;
+    load_at(&path).window_x
+}
+
+pub fn save_window_x(x: i32) -> Result<(), String> {
+    let path = config_path()?;
+    let mut settings = load_at(&path);
+    settings.window_x = Some(x);
+    let text = serde_json::to_string_pretty(&settings).map_err(|error| format!("序列化配置失败：{error}"))?;
+    write_at(&path, &text).map_err(|error| format!("写入配置文件失败：{error}"))
+}
+
+pub fn clear_window_x() -> Result<(), String> {
+    let path = config_path()?;
+    let mut settings = load_at(&path);
+    settings.window_x = None;
+    if settings.is_empty() {
+        app_paths::clear_at(&path).map_err(|error| format!("删除配置文件失败：{error}"))
+    } else {
+        let text = serde_json::to_string_pretty(&settings).map_err(|error| format!("序列化配置失败：{error}"))?;
+        write_at(&path, &text).map_err(|error| format!("写入配置文件失败：{error}"))
+    }
+}
+
+#[tauri::command]
+pub fn save_window_position(x: i32) -> Result<(), String> {
+    save_window_x(x)
 }
 
 /// 读取用户偏好的限额展示窗口，默认为 5 小时限额。
@@ -127,6 +165,7 @@ mod tests {
         let settings = Settings {
             codex_path: Some(r"D:\Tools\codex.exe".into()),
             limit_window: None,
+            window_x: None,
         };
         write_at(&path, &serde_json::to_string_pretty(&settings).unwrap()).unwrap();
         assert_eq!(load_at(&path).codex_path.as_deref(), Some(r"D:\Tools\codex.exe"));
@@ -159,6 +198,7 @@ mod tests {
         let settings = Settings {
             codex_path: None,
             limit_window: Some(LimitDisplayWindow::Week),
+            window_x: None,
         };
         write_at(&path, &serde_json::to_string_pretty(&settings).unwrap()).unwrap();
         assert_eq!(load_at(&path).limit_window, Some(LimitDisplayWindow::Week));
@@ -171,6 +211,7 @@ mod tests {
         let mut settings = Settings {
             codex_path: Some(r"D:\Tools\codex.exe".into()),
             limit_window: Some(LimitDisplayWindow::Week),
+            window_x: None,
         };
         write_at(&path, &serde_json::to_string_pretty(&settings).unwrap()).unwrap();
 
@@ -179,6 +220,40 @@ mod tests {
         let loaded = load_at(&path);
         assert_eq!(loaded.codex_path, None);
         assert_eq!(loaded.limit_window, Some(LimitDisplayWindow::Week));
+        fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn saves_reads_and_clears_window_x_coexisting_with_other_settings() {
+        let path = temp_path("config.json");
+        assert_eq!(load_at(&path).window_x, None);
+
+        let mut settings = Settings {
+            codex_path: Some(r"D:\Tools\codex.exe".into()),
+            limit_window: Some(LimitDisplayWindow::FiveHour),
+            window_x: Some(420),
+        };
+        write_at(&path, &serde_json::to_string_pretty(&settings).unwrap()).unwrap();
+
+        let loaded = load_at(&path);
+        assert_eq!(loaded.window_x, Some(420));
+        assert_eq!(loaded.codex_path.as_deref(), Some(r"D:\Tools\codex.exe"));
+        assert_eq!(loaded.limit_window, Some(LimitDisplayWindow::FiveHour));
+
+        // 清除 window_x 但保留其它设置时，配置文件依然存在
+        settings.window_x = None;
+        assert!(!settings.is_empty());
+        write_at(&path, &serde_json::to_string_pretty(&settings).unwrap()).unwrap();
+
+        let loaded_after = load_at(&path);
+        assert_eq!(loaded_after.window_x, None);
+        assert_eq!(loaded_after.codex_path.as_deref(), Some(r"D:\Tools\codex.exe"));
+
+        // 所有配置全为 None 时 is_empty 返回 true
+        settings.codex_path = None;
+        settings.limit_window = None;
+        assert!(settings.is_empty());
+
         fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 }

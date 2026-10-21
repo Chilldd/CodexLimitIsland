@@ -39,3 +39,11 @@ export function useLimitWindow(): LimitDisplayWindow {
 
   return windowPreference;
 }
+
+export async function selectLimitWindow(window: LimitDisplayWindow): Promise<void> {
+  try {
+    await invoke("set_limit_display_window", { window });
+  } catch (error) {
+    console.error("切换展示限额设置失败", error);
+  }
+}

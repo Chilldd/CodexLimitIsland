@@ -529,6 +529,19 @@ button {
   border-radius: var(--radius-card);
   background: var(--surface-card);
   box-shadow: inset 0 0 0 1px var(--stroke-soft);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.usage-row:hover {
+  background: var(--surface-card-hover);
+}
+
+.usage-row[data-selected="true"] {
+  box-shadow: inset 0 0 0 1px var(--stroke-strong);
 }
 
 .usage-label {
