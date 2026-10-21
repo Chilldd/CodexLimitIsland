@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTurnTokenUsage } from "./hooks/useTurnTokenUsage";
 import { useUsage } from "./hooks/useUsage";
 import { useActivity } from "./hooks/useActivity";
@@ -11,12 +11,16 @@ import { useIslandWindow } from "./hooks/useIslandWindow";
 import { useHorizontalDrag } from "./hooks/useHorizontalDrag";
 import { useSessionNavigation } from "./hooks/useSessionNavigation";
 import { debugEnabled, useDebugPresentation } from "./hooks/useDebugPresentation";
-import { compactSize, expandedHeight } from "./domain/metrics";
+import { ROOT_PADDING, compactSize, expandedHeight } from "./domain/metrics";
 import { nativeWindow, type IslandNativeWindow } from "./nativeWindow";
 import { Island } from "./components/Island";
 import { DebugSwitcher } from "./components/DebugSwitcher";
 import "./App.css";
 import "./styles/states.css";
+
+import { type TurnResult } from "./islandState";
+
+const NO_HELD: TurnResult[] = [];
 
 function App({ native = nativeWindow }: { native?: IslandNativeWindow }) {
   const usage = useUsage();
@@ -27,7 +31,7 @@ function App({ native = nativeWindow }: { native?: IslandNativeWindow }) {
   const limitWindow = useLimitWindow();
   const snapshot = debug.scenario?.snapshot ?? activity.snapshot;
   const held = useHeldResults(snapshot.recentResults, machine.phase);
-  const tokens = useTurnTokenUsage(activity.snapshot.recentResults, debug.scenario ? [] : held);
+  const tokens = useTurnTokenUsage(activity.snapshot.recentResults, debug.scenario ? NO_HELD : held);
   const { view, detailView } = useIslandPresentation(
     snapshot,
     debug.scenario?.usage ?? usage.usage,
@@ -38,9 +42,28 @@ function App({ native = nativeWindow }: { native?: IslandNativeWindow }) {
     usage.error !== null,
     limitWindow,
   );
+  const fallbackCompact = compactSize(view.layout, view.compactTier);
+  const [adaptiveWidth, setAdaptiveWidth] = useState<number | null>(null);
+  const onMeasureCompactWidth = useCallback((target: number) => {
+    setAdaptiveWidth((prev) => {
+      if (prev === target || (prev != null && Math.abs(prev - target) <= 1)) {
+        return prev;
+      }
+      return target;
+    });
+  }, []);
+
+  const compactIslandWidth =
+    view.layout === "minimal"
+      ? fallbackCompact.width - ROOT_PADDING * 2
+      : (adaptiveWidth ?? fallbackCompact.width - ROOT_PADDING * 2);
+
   const height = expandedHeight(view.rowCount, view.showTokenSummary);
   const { controller, orbTransitioning } = useIslandWindow(native, machine, {
-    compact: compactSize(view.layout, view.compactTier),
+    compact: {
+      width: compactIslandWidth + ROOT_PADDING * 2,
+      height: fallbackCompact.height,
+    },
     expandedHeight: height,
     reducedMotion,
     debug: debugEnabled,
@@ -63,6 +86,8 @@ function App({ native = nativeWindow }: { native?: IslandNativeWindow }) {
         view={view}
         detail={detailView}
         height={height}
+        compactWidth={compactIslandWidth}
+        onMeasureCompactWidth={onMeasureCompactWidth}
         expanded={expanded}
         orbTransitioning={orbTransitioning}
         reducedMotion={reducedMotion}

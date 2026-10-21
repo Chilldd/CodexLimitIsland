@@ -71,7 +71,7 @@ button {
 
 .island.layout-single,
 .island.layout-multi {
-  width: var(--compact-width);
+  width: var(--adaptive-compact-width, var(--compact-width));
   height: 38px;
   border-radius: var(--radius-compact);
 }
@@ -93,7 +93,7 @@ button {
 
 .orb-wrap {
   position: absolute;
-  left: 11px;
+  left: 13px;
   top: 9px;
   width: 20px;
   height: 20px;
@@ -218,47 +218,48 @@ button {
 }
 
 .compact-copy {
-  left: 38px;
-  right: 11px;
+  left: 42px;
   opacity: 0;
-  transform: translateY(5px);
+  transform: translateY(4px);
   pointer-events: none;
-  display: grid;
-  grid-template-columns: minmax(0, auto) 1px max-content;
-  justify-content: space-between;
-  column-gap: 5px;
-  align-items: baseline;
-  align-content: center;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
   font-size: var(--font-sm);
   font-weight: 500;
-  line-height: var(--leading-tight);
+  line-height: 1;
 }
 
-.compact-copy::after {
-  content: "";
-  order: 1;
-  align-self: center;
+.compact-divider {
+  flex: none;
   width: 1px;
   height: 11px;
+  margin: 0 7px;
   background: var(--stroke-strong);
+  opacity: 0.8;
+  border-radius: 0.5px;
 }
 
 .activity-label {
   animation: status-arrive 0.22s var(--morph-ease) both;
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   min-width: 0;
+  max-width: 140px;
   white-space: nowrap;
   overflow: hidden;
+  line-height: 1;
 }
 
 .activity-main {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #d6e0e1;
+  color: #e2ecec;
+  font-size: var(--font-sm);
   font-weight: 500;
+  line-height: 1;
 }
 
 .activity-sub {
@@ -266,24 +267,25 @@ button {
   color: var(--text-2);
   font-size: var(--font-xs);
   font-weight: 500;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
 .compact-limit {
-  order: 2;
   color: var(--text-2);
   font-size: var(--font-xs);
   flex: none;
   white-space: nowrap;
-  display: flex;
-  align-items: baseline;
+  display: inline-flex;
+  align-items: center;
   gap: 4px;
-  justify-self: end;
+  line-height: 1;
 }
 
 .compact-limit > span {
   color: var(--text-3);
   font-size: var(--font-xs);
+  line-height: 1;
 }
 
 .compact-limit strong {
@@ -291,6 +293,7 @@ button {
   text-align: right;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+  line-height: 1;
 }
 
 .layout-single .minimal-copy,

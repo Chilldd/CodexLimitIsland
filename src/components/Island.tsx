@@ -1,4 +1,10 @@
-import type { PointerEventHandler, TransitionEventHandler } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  type CSSProperties,
+  type PointerEventHandler,
+  type TransitionEventHandler,
+} from "react";
 import type { IslandPresentation } from "../islandState";
 import { OrbStack } from "./OrbStack";
 import { ExpandedContent } from "./ExpandedContent";
@@ -9,6 +15,8 @@ type Props = {
   navigation: NavigationView;
   expanded: boolean;
   height: number;
+  compactWidth?: number;
+  onMeasureCompactWidth?: (width: number) => void;
   orbTransitioning: boolean;
   reducedMotion: boolean;
   enter: () => void;
@@ -28,6 +36,8 @@ export function Island({
   navigation,
   expanded,
   height,
+  compactWidth,
+  onMeasureCompactWidth,
   orbTransitioning,
   reducedMotion,
   enter,
@@ -36,13 +46,37 @@ export function Island({
   onTransitionEnd,
   drag,
 }: Props) {
+  const compactRef = useRef<HTMLDivElement>(null);
+  const lastKey = useRef<string>("");
+
+  useLayoutEffect(() => {
+    if (view.layout === "minimal" || !onMeasureCompactWidth) return;
+    const el = compactRef.current;
+    if (!el) return;
+    const currentKey = `${view.layout}:${view.compactLabel}:${view.compactUsage.label}:${view.compactUsage.percent}`;
+    if (lastKey.current === currentKey) return;
+    lastKey.current = currentKey;
+
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 0) {
+      // 左内边距 13px + Orb 20px + 间距 9px = 42px；右内边距对称留白 13px
+      const target = Math.min(Math.max(Math.round(rect.width + 55), 126), 290);
+      onMeasureCompactWidth(target);
+    }
+  }, [view.layout, view.compactLabel, view.compactUsage.label, view.compactUsage.percent, onMeasureCompactWidth]);
+
   return (
     <main
       className={`island layout-${view.layout} ${expanded ? "expanded" : ""}`}
       data-attention={view.attention}
       data-feedback={view.feedback}
       data-tier={view.compactTier}
-      style={expanded ? { height } : undefined}
+      style={{
+        ...(expanded ? { height } : undefined),
+        ...(compactWidth && !expanded && view.layout !== "minimal"
+          ? ({ "--adaptive-compact-width": `${compactWidth}px` } as CSSProperties)
+          : undefined),
+      }}
       tabIndex={0}
       onMouseEnter={enter}
       onMouseLeave={leave}
@@ -65,7 +99,7 @@ export function Island({
           <span>{view.compactUsage.label}</span>
           <strong className={view.compactUsage.tone}>{view.compactUsage.percent}</strong>
         </div>
-        <div className="compact-copy" aria-hidden={expanded || view.layout === "minimal"}>
+        <div ref={compactRef} className="compact-copy" aria-hidden={expanded || view.layout === "minimal"}>
           <span className="activity-label" key={view.compactLabel} title={view.compactLabel}>
             {view.compactLabel.includes(" · ") ? (
               <>
@@ -76,6 +110,7 @@ export function Island({
               <span className="activity-main">{view.compactLabel}</span>
             )}
           </span>
+          <span className="compact-divider" aria-hidden="true" />
           <span className="compact-limit">
             <span>{view.compactUsage.label}</span>
             <strong className={view.compactUsage.tone}>{view.compactUsage.percent}</strong>

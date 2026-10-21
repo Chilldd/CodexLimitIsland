@@ -17,21 +17,22 @@ function pickLatestTurn(
   tokens: Record<string, TokenUsageState>,
   previous: LastTurnSummary | null,
 ): LastTurnSummary | null {
-  let latest = previous;
-  for (const result of [...results, ...held]) {
-    const key = resultKey(result);
-    if (!latest || result.finishedAt >= latest.result.finishedAt) {
-      const token = tokens[key] ?? (latest && resultKey(latest.result) === key ? latest.token : undefined);
-      if (!latest || latest.result !== result || latest.token !== token) {
-        latest = { result, token };
-      }
+  const all = [...results, ...held];
+  if (!all.length) return previous;
+  let candidate: TurnResult | null = previous ? previous.result : null;
+  for (const result of all) {
+    if (!candidate || result.finishedAt > candidate.finishedAt) {
+      candidate = result;
     }
   }
-  if (latest) {
-    const token = tokens[resultKey(latest.result)];
-    if (token && token !== latest.token) latest = { result: latest.result, token };
+  if (!candidate) return previous;
+  const token =
+    tokens[resultKey(candidate)] ??
+    (previous && resultKey(previous.result) === resultKey(candidate) ? previous.token : undefined);
+  if (previous && previous.result === candidate && previous.token === token) {
+    return previous;
   }
-  return latest;
+  return { result: candidate, token };
 }
 
 export function useIslandPresentation(
