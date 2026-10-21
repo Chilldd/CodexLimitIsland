@@ -34,19 +34,19 @@
 
 ## ✨ Key Features
 
-- 📊 **Multi-Dimensional Quota Monitoring**: The expanded panel displays progress bars and reset countdowns for both the **5-hour** and **weekly (7-day)** quota windows. The compact capsule displays your preferred quota window, which can be toggled via the system tray menu.
+- 📊 **Multi-Dimensional Quota Monitoring**: The expanded panel displays progress bars and reset times for both the **5-hour** and **weekly (7-day)** quota windows (with reset countdowns when quota is exhausted). The compact capsule displays your preferred quota window, which can be switched directly by clicking a quota card in the expanded panel or via the system tray menu, with manual one-click refresh support.
 - 🏝️ **Smart Adaptive Dynamic Island**:
   - **Compact Capsule**: Dynamic text measurement and adaptive sizing ensure activity status and quota percentage fit naturally without awkward truncation; enhanced with a subtle divider and animated breathing Orb.
-  - **Interactive Expanded Panel**: Left-click to smoothly toggle between compact and expanded views. Supports horizontal drag-and-drop along the top edge of your screen with position persistence.
-- ⚡ **Deep Codex Hook Integration**: Integrates directly with Codex command-style Hooks to track session lifecycles and fine-grained behaviors (thinking/reasoning, code search, command execution, approval requests, context compression, etc.) with real-time breathing Orb effects.
+  - **Interactive Expanded Panel**: Left-click to smoothly toggle between compact and expanded views. Supports horizontal drag-and-drop along the top edge of your screen with position persistence, screen-bounds clamping, and one-click tray recentering.
+- ⚡ **Deep Codex Hook Integration**: Integrates directly with Codex command-style Hooks (with one-click tray configuration) to track session lifecycles and fine-grained behaviors (thinking, searching, editing, command execution, approval requests, context compaction, etc.) with real-time breathing Orb effects.
 - 🚀 **One-Click Session Navigation**: Click the main session headline or any item in the multi-task list to immediately bring up and focus the corresponding session in the Codex App.
-- 💡 **Idle Inspiration Ticker**: When Codex is idle with no active tasks, the expanded panel rotates creative prompts and ideas to inspire your next prompt.
-- 🗂️ **Multi-Task & Model Visibility**: Displays concurrent sessions and background sub-agent tasks, complete with active model tags (e.g., `gpt-4o`, `o3-mini`) and dynamic elapsed timers.
+- 💬 **Idle Status Ticker**: When completely idle with no active sessions or recent turn history, the expanded panel subtitle rotates lighthearted developer status lines every 5 seconds; after a turn finishes, it displays the last turn status and token summary instead.
+- 🗂️ **Multi-Task & Model Visibility**: Displays concurrent sessions and background sub-agent tasks, complete with active model tags and dynamic elapsed timers.
 - 🔢 **Token Consumption Transparency**: Automatically captures and presents Turn Token usage upon task completion as well as cumulative Session Tokens.
 - 🛡️ **100% Local Processing & Privacy**:
   - Never accesses credentials, login tokens, prompt contents, or tool execution outputs;
   - Hook JSON payloads are transmitted via local loopback (`127.0.0.1`), preserving only essential state metadata in memory; Token metrics are read from local session logs;
-  - Session activity and token caches exist solely in memory and are released upon exit.
+  - Session activity and token caches exist solely in memory, while app settings, exit markers, and controlled diagnostic logs are stored locally.
 - 🔌 **Intelligent Auto-Start & Tray Exit Respect**:
   - Can automatically launch the island on demand when Codex initiates tasks;
   - If you explicitly choose "Exit" from the system tray, your choice is respected and auto-wakeups are suppressed until you manually start the application again.
@@ -76,6 +76,9 @@ Run the installer and follow the setup wizard.
 
 Configuring Codex command-style Hooks enables real-time activity status, lifecycle tracking, and Token metrics in the island.
 
+- **One-Click Configuration (Recommended)**: Right-click the system tray icon and select **"Configure Codex Hook…"** (`配置 Codex Hook…`). The app will safely merge the current executable's hook rules into `%USERPROFILE%\.codex\hooks.json` while preserving any existing third-party hooks. Afterward, fully exit and restart the Codex App and approve the hook in the review prompt.
+- **Manual Configuration**:
+
 1. Open or create `%USERPROFILE%\.codex\hooks.json` (or under your custom `CODEX_HOME` directory).
 2. Refer to [hooks.example.json](hooks.example.json) and merge the hook definitions into your existing `hooks` object.
 3. Replace the `command` field in each handler with the correct executable path. The example covers 12 event types, including session lifecycle, tool execution, sub-agents, approvals, and compression.
@@ -104,14 +107,17 @@ If not in `PATH`, use the absolute path enclosed in quotes. For example, if inst
 ### 3. Daily Usage
 
 - **Expand / Collapse**: Click the island to smoothly switch between compact capsule and expanded card views.
-- **Drag Positioning**: Click and drag horizontally along the top edge of the display; the position is automatically persisted.
+- **Switch Compact Limit Window**: Click either the **5-hour** or **weekly** quota card directly in the expanded panel (or switch via the tray menu) to set it as the default window shown in compact mode.
+- **Drag Positioning**: Click and drag horizontally along the top edge of the display; the position is automatically persisted with screen-bounds protection across resolution or monitor changes.
 - **Direct Session Jump**: Click the session title or any item in the session list within the expanded card to immediately activate and focus the conversation in the Codex App.
-- **Idle Prompt Ticker**: Displays prompt ideas and questions when no active tasks are running.
+- **Idle Status Ticker**: Rotates lighthearted developer status lines every 5 seconds when idle with no recent turn history, or shows the last turn summary after a task finishes.
 - **Tray Menu**:
-  - Switch displayed limit in compact mode via **"Display Limit"** (`5h Rate Limit` or `Weekly Rate Limit`);
-  - Manually configure `codex.exe` path via **"Set Codex Path..."** (includes built-in connectivity diagnostics);
-  - Select **"Restore Default Path"** at any time;
-  - Choose **"Exit"** to completely shut down the application.
+  - Click **"Refresh Rate Limits"** (`立即刷新额度`) to trigger an immediate quota sync;
+  - Switch displayed limit in compact mode via **"Display Limit"** (`展示额度`: `5h` or `7d`);
+  - Click **"Reset Window Position"** (`重置窗口位置`) to recenter the island at the top of the primary monitor;
+  - Click **"Configure Codex Hook…"** (`配置 Codex Hook…`) to write or repair `%USERPROFILE%\.codex\hooks.json` in one click;
+  - Manually configure `codex.exe` path via **"Set Codex Path…"** (`设置 Codex 程序路径…`, includes built-in connectivity diagnostics), or select **"Restore Default Path"** (`恢复默认路径`) at any time;
+  - Choose **"Exit"** (`退出`) to completely shut down the application.
 
 Exiting via the system tray stops the island from automatically waking up on subsequent Hook events until the program is manually restarted.
 
