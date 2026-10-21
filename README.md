@@ -16,6 +16,10 @@
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License" />
 </p>
 
+<p align="center">
+  <a href="README.md"><b>简体中文</b></a> | <a href="README_en.md">English</a>
+</p>
+
 ---
 
 ## 📸 界面预览
