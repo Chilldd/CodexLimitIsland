@@ -200,11 +200,41 @@ test("Presentation has no active-session second tick, but Result and late Token 
     data: snapshot([], [result]),
     tokens: { [resultKey(result)]: { status: "ready", taskTokens: 200, sessionTokens: 900, readyAt: 25_000 } },
   });
-  expect(hook.result.current.view.compactLabel).toBe("完成 · 200");
+  expect(hook.result.current.view.compactLabel).toBe("Completed · 200");
   await act(() => vi.advanceTimersByTimeAsync(2_799));
   expect(hook.result.current.view.visibleResults).toHaveLength(1);
   await act(() => vi.advanceTimersByTimeAsync(1));
   expect(hook.result.current.view.visibleResults).toHaveLength(0);
+});
+
+test("running sessions retain their own completed usage after registry and query-cache cleanup", () => {
+  const first = done();
+  const second = { ...done(19_900), sessionId: "other-session", turnId: "other-turn", model: "other-model" };
+  const sessions = [
+    { ...active(), currentTurnId: "next-turn", model: "current-model" },
+    { ...active(), id: "other-session", currentTurnId: "other-next-turn", model: "other-current-model" },
+  ];
+  const tokens: Record<string, TokenUsageState> = {
+    [resultKey(first)]: { status: "ready", taskTokens: 321, sessionTokens: 900, readyAt: 20_000 },
+    [resultKey(second)]: { status: "ready", taskTokens: 567, sessionTokens: 1200, readyAt: 20_000 },
+  };
+  const hook = renderHook(
+    ({ data, tokens }) => useIslandPresentation(data, usage(), tokens, [], "compact", data.updatedAt, false),
+    {
+      initialProps: { data: snapshot(sessions, [first, second]), tokens },
+    },
+  );
+  hook.rerender({ data: snapshot(sessions, [], 40_000), tokens: {} });
+  expect(hook.result.current.view.rows.find((row) => row.sessionId === first.sessionId)).toMatchObject({
+    model: "current-model",
+    token: { sessionTokens: 900 },
+  });
+  expect(hook.result.current.view.rows.find((row) => row.sessionId === second.sessionId)).toMatchObject({
+    model: "other-current-model",
+    token: { sessionTokens: 1200 },
+  });
+  hook.rerender({ data: snapshot([{ ...active(), id: "new-session", project: "Demo" }], [], 40_000), tokens: {} });
+  expect(hook.result.current.view.rows[0].token).toBeUndefined();
 });
 
 test("Elapsed updates its own text without rerendering the parent", async () => {
@@ -318,22 +348,24 @@ test("App keeps completed Token while expanded and restores the minimal target e
   fireEvent.click(main);
   await flushReact();
   expect(main.classList.contains("expanded")).toBe(true);
+  fireEvent.click(ui.container.querySelector(".system-resource-row")!);
+  fireEvent.click(ui.container.querySelector(".session-list")!);
+  expect(main.classList.contains("expanded")).toBe(true);
   await act(() => vi.advanceTimersByTimeAsync(20_000));
   act(() => listeners.get("activity-updated")!({ payload: snapshot([], [], 40_000) }));
-  expect(ui.container.querySelector(".token-summary")?.textContent).toContain("321 tokens");
+  expect(ui.container.querySelector(".session-tokens")?.textContent).toContain("321");
   native.setHitRegion.mockClear();
   native.setSize.mockClear();
   fireEvent.mouseLeave(main);
   await act(() => vi.advanceTimersByTimeAsync(420));
   expect(main.classList.contains("layout-minimal")).toBe(true);
-  expect(ui.container.querySelector(".token-summary")).not.toBeNull();
+  expect(ui.container.querySelector(".session-tokens")?.textContent).toContain("321");
   await act(() => vi.advanceTimersByTimeAsync(500));
   expect(native.setSize.mock.calls).toEqual([[390, 42]]);
   expect(native.setHitRegion.mock.calls).toEqual([[100, 40]]);
-  expect(ui.container.querySelector(".token-summary")).toBeNull();
-  expect(ui.container.querySelector(".session-link")?.textContent).toContain("Demo");
-  expect(ui.container.querySelector(".activity-head small")?.textContent).toBe("上次完成 · 321 tokens");
-  expect(ui.container.querySelector(".meta > span")?.textContent).toBe("sol");
+  expect(ui.container.querySelector(".session-row")?.textContent).toContain("Demo");
+  expect(ui.container.querySelector(".session-tokens")?.textContent).toContain("321");
+  expect(ui.container.querySelector(".session-model")?.textContent).toBe("sol");
   expect(console.error).not.toHaveBeenCalled();
 });
 
@@ -353,7 +385,7 @@ test("Session and headline navigation buttons stop propagation and keep busy/dis
   row.rerender(
     <SessionRow row={view.rows[0]} navigation={{ ...navigation, disabled: true, openingSession: "sample-session" }} />,
   );
-  expect(row.getByRole("button").textContent).toContain("打开中…");
+  expect(row.getByRole("button").textContent).toContain("Opening...");
   expect((row.getByRole("button") as HTMLButtonElement).disabled).toBe(true);
   row.unmount();
   const single = deriveIslandPresentation(snapshot([active()]), null, {}, 20_000);
@@ -363,7 +395,7 @@ test("Session and headline navigation buttons stop propagation and keep busy/dis
       <ExpandedContent view={single} navigation={navigation} expanded={true} />
     </div>,
   );
-  fireEvent.click(headline.getByRole("button"));
+  fireEvent.click(headline.getByRole("button", { name: /Demo/ }));
   expect(open).toHaveBeenCalledExactlyOnceWith("sample-session");
   expect(toggle).not.toHaveBeenCalled();
 });
@@ -382,6 +414,7 @@ test("clicking usage row invokes set_limit_display_window and stops propagation"
   expect(usageRows).toHaveLength(2);
   expect(usageRows[0].getAttribute("data-selected")).toBe("true");
   expect(usageRows[1].getAttribute("data-selected")).toBe("false");
+  expect(ui.getByRole("button", { name: "5h: 50% remaining", pressed: true })).toBe(usageRows[0]);
 
   // 点击第二行（每周限额）
   fireEvent.click(usageRows[1]);
@@ -392,6 +425,18 @@ test("clicking usage row invokes set_limit_display_window and stops propagation"
   fireEvent.click(usageRows[0]);
   expect(toggle).not.toHaveBeenCalled();
   expect(bridge.invoke).toHaveBeenCalledWith("set_limit_display_window", { window: "fiveHour" });
+
+  ui.rerender(
+    <div onClick={toggle}>
+      <ExpandedContent
+        view={deriveIslandPresentation(snapshot(), usage(50), {}, 20_000, [], false, "week")}
+        navigation={navigation}
+        expanded={true}
+      />
+    </div>,
+  );
+  expect(usageRows[0].getAttribute("aria-pressed")).toBe("false");
+  expect(usageRows[1].getAttribute("aria-pressed")).toBe("true");
 
   ui.unmount();
 });

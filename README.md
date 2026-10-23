@@ -43,6 +43,7 @@
 - 💬 **待机趣味语录轮播 (Idle Ticker)**：当处于纯待命空闲状态（无活跃会话与最近任务记录）时，展开卡片副标题每 5 秒自动轮播程序员趣味状态语录；若已有刚结束的任务，则优先展示上次完成状态与 Token 概览。
 - 🗂️ **多任务与模型透视**：支持多个并行会话与子代理状态查看，清晰展示各任务使用的具体模型标识与实时动态耗时（Elapsed）。
 - 🔢 **Token 消耗透视**：任务完成时自动统计本次任务（Turn）消耗的 Tokens 及当前会话累计 Tokens，使用情况一目了然。
+- 🖥️ **Codex 资源监控**：展开态常驻监控 Codex 桌面端与任务/CLI 进程的 CPU 与内存占用，并实时呈现 CPU 动态趋势图。
 - 🛡️ **本地处理与隐私安全**：
   - 不直接读取 Codex 登录凭证文件，不保存 API Key、登录令牌、提示词或工具输出；
   - Hook 原始 JSON 通过本机环回接口转发，接收端只在内存中保留状态所需的元数据；Token 统计来自本地 Codex 会话文件；
@@ -59,7 +60,7 @@
 
 进入 [Releases](https://github.com/Chilldd/CodexLimitIsland/releases/latest) 页面，下载 Windows x64 安装包。
 
-- [下载 v0.1.1 安装包（Windows x64）](https://github.com/Chilldd/CodexLimitIsland/releases/download/v0.1.1/CodexLimitIsland_0.1.1_x64-setup.exe)
+- [下载 v0.2.0 安装包（Windows x64）](https://github.com/Chilldd/CodexLimitIsland/releases/download/v0.2.0/CodexLimitIsland_0.2.0_x64-setup.exe)
 - [查看所有版本](https://github.com/Chilldd/CodexLimitIsland/releases)
 
 下载后双击安装包，按安装向导完成安装。
@@ -68,7 +69,7 @@
 >
 > **平台说明**：当前仅提供 Windows x64 安装包，窗口与点击区域针对 Windows 适配。macOS/Linux 尚未验证，当前打包配置仅启用 Windows NSIS。
 >
-> **签名说明**：v0.1.1 安装包未进行代码签名，可使用 Release 中的 `SHA256SUMS.txt` 校验文件完整性。
+> **签名说明**：v0.2.0 安装包未进行代码签名，可使用 Release 中的 `SHA256SUMS.txt` 校验文件完整性。
 
 ---
 

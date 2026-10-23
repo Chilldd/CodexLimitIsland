@@ -1,7 +1,5 @@
 :root {
-  font-family:
-    "SF Pro Text", "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "PingFang SC",
-    sans-serif;
+  font-family: Inter, "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", sans-serif;
   color: var(--text-1);
   background: transparent;
   font-synthesis: none;
@@ -9,6 +7,7 @@
 
   /* 尺寸与 src/domain/metrics.ts 保持一致，由 tests/presentation.test.ts 与 tests/compactTier.test.ts 校验。 */
   --morph-duration: 340ms;
+  --compact-height: 38px;
   --morph-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --island-padding: 2px;
   --minimal-width: 96px;
@@ -16,48 +15,67 @@
   --compact-width: 156px;
   --compact-multi-width: 172px;
   --expanded-width: 380px;
-  --expanded-max-height: 420px;
-  --session-row-height: 40px;
+  --expanded-max-height: 440px;
+  --session-row-height: 60px;
 
-  /* 字号阶梯：11 / 12 / 13 / 15，10px 只用于开发预览。 */
+  /* 底部卡片与监控栏共用定位基准，内容区只占用其上方空间。 */
+  --panel-inset: 16px;
+  --content-inset: 12px;
+  --section-gap: 8px;
+  --resource-height: 44px;
+  --usage-card-height: 80px;
+  --detail-content-top: 72px;
+  --resource-bottom: calc(var(--panel-inset) + var(--usage-card-height) + 32px);
+  --detail-content-bottom: calc(var(--resource-bottom) + var(--resource-height) + 12px);
+
+  /* 字号阶梯：11 / 12 / 13 / 14 / 20，保持精致紧凑的灵动岛比例。 */
   --font-xs: 11px;
   --font-sm: 12px;
   --font-md: 13px;
-  --font-lg: 15px;
+  --font-lg: 14px;
+  --font-value: 20px;
   --leading-tight: 16px;
   --leading-body: 18px;
 
   /* 表面、卡片与描边 */
-  --surface-1: #171c20;
-  --surface-2: #101519;
-  --surface-3: #0c1114;
-  --surface-card: rgba(255, 255, 255, 0.045);
-  --surface-card-hover: rgba(255, 255, 255, 0.07);
-  --stroke-soft: rgba(255, 255, 255, 0.035);
-  --stroke: rgba(255, 255, 255, 0.06);
-  --stroke-strong: rgba(255, 255, 255, 0.13);
-  --track: rgba(255, 255, 255, 0.09);
-  --scrollbar: #424c4e;
-  --shadow-contact: rgba(0, 0, 0, 0.5);
+  --surface-1: #0e1117;
+  --surface-2: #080a0e;
+  --surface-3: #080a0e;
+  --surface-card: rgba(255, 255, 255, 0.018);
+  --surface-card-hover: rgba(255, 255, 255, 0.03);
+  --stroke-soft: rgba(255, 255, 255, 0.05);
+  --stroke: rgba(255, 255, 255, 0.055);
+  --stroke-strong: rgba(255, 255, 255, 0.067);
+  --track: #232a32;
+  --scrollbar: #39434f;
+  --shadow-contact: rgba(0, 0, 0, 0.24);
 
-  /* 文本层级 */
-  --text-1: #eef3f3;
-  --text-2: #a3b0b1;
-  --text-3: #8b999b;
+  /* 深空灰阶：常规内容与辅助信息通过明度区分。 */
+  --text-1: #e9ecf1;
+  --text-2: #d2d8df;
+  --text-3: #a2acb9;
+  --text-secondary: #b3bdc9;
+  --text-muted: #909caa;
+  --quota-value: #e3e7ed;
+  --monitor-label: #a0adbc;
+  --monitor-value: #c6d2de;
+  --monitor-secondary: #a4b1bf;
+  --monitor-app: #7a99af;
 
   /* 单色强调与额度语义色 */
-  --accent: #80dec8;
-  --tone-healthy-fg: #80dec8;
-  --tone-healthy-fill: #77d9c1;
-  --tone-warning-fg: #e3c47e;
-  --tone-warning-fill: #dbbc74;
-  --tone-critical-fg: #e59b87;
-  --tone-critical-fill: #dc907b;
+  --accent: #83d6db;
+  --tone-healthy-fg: #e3e7ed;
+  --tone-healthy-fill: #a4cad3;
+  --tone-active-fg: #82badb;
+  --tone-warning-fg: #d3ae79;
+  --tone-warning-fill: #b99b72;
+  --tone-critical-fg: #d18c8c;
+  --tone-critical-fill: #b77d7d;
   --tone-neutral-fill: #718184;
-  --completed: #7bd8bf;
-  --attention-permission: #d9b972;
-  --attention-quota: #d9927e;
-  --dot-active: #7e9d98;
+  --completed: #84c8a9;
+  --attention-permission: #d3ae79;
+  --attention-quota: #d18c8c;
+  --dot-active: #83d6db;
 
   /* 圆角：展开态与内层卡片保持同心。 */
   --radius-minimal: 18px;

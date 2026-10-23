@@ -1,0 +1,24 @@
+.debug-switcher {
+  position: fixed;
+  left: 4px;
+  right: 4px;
+  top: calc(var(--expanded-max-height) + var(--island-padding) * 2 + 4px);
+  max-height: 104px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  overflow: auto;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--surface-1);
+}
+
+.debug-switcher button {
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.11);
+  color: var(--text-1);
+  font-size: 10px;
+  cursor: pointer;
+}

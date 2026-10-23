@@ -11,22 +11,34 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 /// 托盘右键菜单：已设置自定义路径时才启用“恢复默认路径”，并支持自由选择展示 5h 还是 week 限额。
 fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let current_window = settings::limit_display_window();
-    let refresh_limits = MenuItem::with_id(app, "refresh-limits", "立即刷新额度", true, None::<&str>)?;
-    let reset_pos = MenuItem::with_id(app, "reset-window-position", "重置窗口位置", true, None::<&str>)?;
-    let config_hook = MenuItem::with_id(app, "configure-codex-hook", "配置 Codex Hook…", true, None::<&str>)?;
+    let refresh_limits = MenuItem::with_id(app, "refresh-limits", "Refresh limits now", true, None::<&str>)?;
+    let reset_pos = MenuItem::with_id(
+        app,
+        "reset-window-position",
+        "Reset island position",
+        true,
+        None::<&str>,
+    )?;
+    let config_hook = MenuItem::with_id(
+        app,
+        "configure-codex-hook",
+        "Configure Codex Hook...",
+        true,
+        None::<&str>,
+    )?;
 
-    let set_path = MenuItem::with_id(app, "set-codex-path", "设置 Codex 程序路径…", true, None::<&str>)?;
+    let set_path = MenuItem::with_id(app, "set-codex-path", "Set Codex executable...", true, None::<&str>)?;
     let reset_path = MenuItem::with_id(
         app,
         "reset-codex-path",
-        "恢复默认路径",
+        "Restore default path",
         settings::configured_codex_path().is_some(),
         None::<&str>,
     )?;
     let item_5h = CheckMenuItem::with_id(
         app,
         "limit-window-5h",
-        "5 小时限额 (5h)",
+        "5-hour limit (5h)",
         true,
         current_window == settings::LimitDisplayWindow::FiveHour,
         None::<&str>,
@@ -34,13 +46,13 @@ fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let item_week = CheckMenuItem::with_id(
         app,
         "limit-window-week",
-        "每周限额 (7d)",
+        "Weekly limit (7d)",
         true,
         current_window == settings::LimitDisplayWindow::Week,
         None::<&str>,
     )?;
-    let display_menu = Submenu::with_items(app, "展示额度", true, &[&item_5h, &item_week])?;
-    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let display_menu = Submenu::with_items(app, "Displayed limit", true, &[&item_5h, &item_week])?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     Menu::with_items(
         app,
         &[
@@ -103,9 +115,9 @@ pub(crate) fn notify(app: &tauri::AppHandle, kind: MessageDialogKind, title: &st
 /// 文件选择框只能在主线程创建，因此先注册回调，再由后台线程等待用户选择结果。
 fn choose_codex_path(app: tauri::AppHandle) {
     let (sender, receiver) = mpsc::channel();
-    let dialog = app.dialog().file().set_title("选择 Codex 可执行程序");
+    let dialog = app.dialog().file().set_title("Select Codex executable");
     #[cfg(windows)]
-    let dialog = dialog.add_filter("可执行程序", &["exe"]);
+    let dialog = dialog.add_filter("Executables", &["exe"]);
     dialog.pick_file(move |path| {
         let _ = sender.send(path);
     });
@@ -135,8 +147,8 @@ fn choose_codex_path(app: tauri::AppHandle) {
         let check = check_codex_runtime(&path);
         if let RuntimeCheck::Unusable(error) = &check {
             diagnostics::log("所选 Codex 程序不可用，未保存路径", Some(error));
-            notify(&app, MessageDialogKind::Error, "Codex 程序不可用", format!(
-                "所选程序无法启动 Codex app-server，路径未保存。\n\n{}\n\n{error}\n\n请选择 Codex CLI 或 Codex App 内置的 codex.exe。",
+            notify(&app, MessageDialogKind::Error, "Codex unavailable", format!(
+                "The selected executable could not start Codex app-server. The path was not saved.\n\n{}\n\n{error}\n\nSelect Codex CLI or the codex.exe bundled with Codex App.",
                 path.display()
             ));
             return;
@@ -146,8 +158,8 @@ fn choose_codex_path(app: tauri::AppHandle) {
             notify(
                 &app,
                 MessageDialogKind::Error,
-                "保存失败",
-                format!("{error}\n\n路径未保存。"),
+                "Unable to save",
+                format!("{error}\n\nThe path was not saved."),
             );
             return;
         }
@@ -156,15 +168,15 @@ fn choose_codex_path(app: tauri::AppHandle) {
             RuntimeCheck::Usable => notify(
                 &app,
                 MessageDialogKind::Info,
-                "Codex 程序已启用",
-                format!("程序自检通过，已使用：\n{}", path.display()),
+                "Codex executable selected",
+                format!("Executable verified. Now using:\n{}", path.display()),
             ),
             RuntimeCheck::LimitsFailed(error) => notify(
                 &app,
                 MessageDialogKind::Warning,
-                "已保存，但额度读取失败",
+                "Saved, but limits unavailable",
                 format!(
-                    "程序可以启动，但未能读取额度：\n{error}\n\n已保存路径：\n{}",
+                    "The executable started, but limits could not be read:\n{error}\n\nSaved path:\n{}",
                     path.display()
                 ),
             ),
@@ -219,8 +231,8 @@ fn select_limit_window(app: &tauri::AppHandle, window: settings::LimitDisplayWin
         notify(
             app,
             MessageDialogKind::Error,
-            "保存设置失败",
-            format!("{error}\n\n设置未保存。"),
+            "Unable to save settings",
+            format!("{error}\n\nSettings were not saved."),
         );
     }
 }
@@ -233,8 +245,8 @@ pub(crate) fn on_menu(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
                 notify(
                     app,
                     MessageDialogKind::Error,
-                    "无法安全退出",
-                    format!("{error}。应用仍在运行。请检查应用状态目录的写入权限后重试退出。"),
+                    "Unable to quit safely",
+                    format!("{error}. The app is still running. Check write permissions for the app state directory, then try quitting again."),
                 );
             }
         }
@@ -262,9 +274,9 @@ pub(crate) fn on_menu(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
                 notify(
                     app,
                     MessageDialogKind::Info,
-                    "Codex Hook 配置成功",
+                    "Codex Hook configured",
                     format!(
-                        "已成功将 Hook 规则写入：\n{}\n\n请完全退出并重启 Codex App，并在首次触发时点击确认信任该 Hook 命令。",
+                        "Hook rules were saved to:\n{}\n\nQuit and restart Codex App, then trust the Hook command when prompted.",
                         path.display()
                     ),
                 );
@@ -274,8 +286,8 @@ pub(crate) fn on_menu(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
                 notify(
                     app,
                     MessageDialogKind::Error,
-                    "配置 Codex Hook 失败",
-                    format!("未能写入 Hook 配置：\n{error}"),
+                    "Unable to configure Codex Hook",
+                    format!("Unable to save Hook configuration:\n{error}"),
                 );
             }
         },

@@ -25,7 +25,7 @@ export function OrbStack({
       <ThinkingOrb
         className="orb-large"
         state={orb.state}
-        size={64}
+        size={20}
         theme="dark"
         speed={orb.speed}
         paused={reducedMotion || (!expanded && !transitioning)}

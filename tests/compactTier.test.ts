@@ -30,23 +30,23 @@ const frame = (sessions: Session[], results: TurnResult[] = [], tokens: Record<s
 test("every single-session activity stays in the run tier, so switching activity never resizes the island", () => {
   for (const activity of ACTIVITY_KINDS) {
     const view = frame([{ ...active(), activity }]);
-    expect(view.compactLabel.length, activity).toBeLessThanOrEqual(3);
+    expect(view.compactLabel.length, activity).toBeLessThanOrEqual(13);
     expect(view.compactTier, activity).toBe("run");
   }
 });
 
 test("multi-agent keeps the run tier while permission, quota and several sessions use the result tier", () => {
   const withAgents = frame([{ ...active(), agents: [agent("a"), agent("b")] }]);
-  expect(withAgents.compactLabel).toBe("多代理");
+  expect(withAgents.compactLabel).toBe("Multi-agent");
   expect(withAgents.compactTier).toBe("run");
   const permission = frame([{ ...active(), attention: "permission" }]);
-  expect(permission.compactLabel).toBe("等待审批");
+  expect(permission.compactLabel).toBe("Approval needed");
   expect(permission.compactTier).toBe("result");
   const severalSessions = frame([active(), { ...active(), id: "other" }]);
-  expect(severalSessions.compactLabel).toBe("2 个会话");
+  expect(severalSessions.compactLabel).toBe("2 active sessions");
   expect(severalSessions.compactTier).toBe("result");
   const quota = deriveIslandPresentation(snapshot(), usage(0), {}, NOW);
-  expect(quota.compactLabel).toBe("额度已用尽");
+  expect(quota.compactLabel).toBe("Rate limit reached");
   expect(quota.compactTier).toBe("result");
 });
 
@@ -64,14 +64,17 @@ test("a completed result reserves the token width at once and keeps it while the
     expect(frame([], [result], tokens).compactTier).toBe("result");
   }
   const interrupted = frame([], [{ ...result, kind: "interrupted" }]);
-  expect(interrupted.compactLabel).toBe("已中断");
+  expect(interrupted.compactLabel).toBe("Interrupted");
   expect(interrupted.compactTier).toBe("run");
 });
 
 test("an active session next to a visible result uses the multi tier", () => {
-  const view = frame([active()], [done()]);
-  expect(view.compactLabel).toBe("1 运行 · 1 完成");
+  const view = frame([active()], [{ ...done(), sessionId: "other-session" }]);
+  expect(view.compactLabel).toBe("1 running · 1 completed");
   expect(view.compactTier).toBe("multi");
+  const sameSession = frame([active()], [done()]);
+  expect(sameSession.compactLabel).toBe("Thinking...");
+  expect(sameSession.rows).toHaveLength(1);
 });
 
 test("a normal turn resizes the compact island once, from run to result", () => {
@@ -92,11 +95,11 @@ test("a normal turn resizes the compact island once, from run to result", () => 
 });
 
 test("compactTierFor classifies labels by their rendered length", () => {
-  expect(compactTierFor("思考中", false)).toBe("run");
-  expect(compactTierFor("等待审批", false)).toBe("result");
-  expect(compactTierFor("额度已用尽", false)).toBe("result");
-  expect(compactTierFor("1 运行 · 1 完成", false)).toBe("multi");
-  expect(compactTierFor("完成 · 368k", true)).toBe("result");
+  expect(compactTierFor("Thinking...", false)).toBe("run");
+  expect(compactTierFor("Approval needed", false)).toBe("result");
+  expect(compactTierFor("Rate limit reached", false)).toBe("result");
+  expect(compactTierFor("1 running · 1 completed", false)).toBe("multi");
+  expect(compactTierFor("Completed · 368k", true)).toBe("result");
 });
 
 test("tier widths, hit regions and CSS tokens stay aligned", () => {

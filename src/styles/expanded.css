@@ -1,0 +1,125 @@
+/* 固定最终宽度，让展开过程中的项目行保持稳定排版。 */
+.expanded-copy {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--expanded-width);
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+.expanded .expanded-copy {
+  opacity: 1;
+  pointer-events: auto;
+  transition-delay: 0.06s;
+}
+.activity-head {
+  position: absolute;
+  left: 62px;
+  right: 16px;
+  top: 15px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.activity-head > span:first-child {
+  position: relative;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 20px;
+}
+.meta {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.island-chevron {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-top: 1px solid var(--text-muted);
+  border-left: 1px solid var(--text-muted);
+  transform: translateY(2px) rotate(45deg);
+}
+.project-heading,
+.quota-heading {
+  position: absolute;
+  left: var(--panel-inset);
+  right: var(--panel-inset);
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 12px;
+}
+.project-heading {
+  top: 56px;
+}
+.project-heading > span:first-child,
+.quota-heading > span {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.quota-heading {
+  bottom: calc(var(--panel-inset) + var(--usage-card-height) + 8px);
+}
+.expanded-copy::before {
+  content: "";
+  position: absolute;
+  top: 47px;
+  left: var(--panel-inset);
+  right: var(--panel-inset);
+  height: 1px;
+  background: var(--stroke-strong);
+}
+.navigation-error {
+  position: absolute;
+  top: 36px;
+  left: var(--panel-inset);
+  right: var(--panel-inset);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--tone-critical-fg);
+  font-size: 9px;
+  line-height: 11px;
+}
+.project-empty {
+  height: var(--session-row-height);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 var(--content-inset);
+  color: var(--text-3);
+  font-size: 11px;
+}
+.project-empty strong {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 550;
+}
+.idle-prompt-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+@media (prefers-reduced-motion: reduce) {
+  .expanded-copy,
+  .expanded .expanded-copy {
+    transition-duration: 150ms;
+    transition-delay: 0ms;
+  }
+}

@@ -1,0 +1,116 @@
+.orb-wrap {
+  position: absolute;
+  left: 13px;
+  top: 9px;
+  width: 20px;
+  height: 20px;
+  transition:
+    left var(--morph-duration) var(--morph-ease),
+    top var(--morph-duration) var(--morph-ease),
+    width var(--morph-duration) var(--morph-ease),
+    height var(--morph-duration) var(--morph-ease);
+}
+
+.island.layout-minimal .orb-wrap {
+  top: 8px;
+}
+
+.orb-wrap canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+.orb-wrap .orb-small {
+  opacity: 1;
+  transition: opacity 0.11s ease 0.07s;
+}
+
+.orb-wrap .orb-large {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.island.expanded .orb-wrap .orb-small {
+  opacity: 0;
+  transition-delay: 0ms;
+}
+
+.orb-wrap::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.island[data-attention="permission"] .orb-wrap::after {
+  border-color: var(--attention-permission);
+  animation: waiting-ring 2.8s ease-in-out infinite;
+}
+
+.island[data-attention="quota"] .orb-wrap::after {
+  border-color: var(--attention-quota);
+  opacity: 0.38;
+}
+
+.island[data-feedback="completed"] .orb-wrap::after {
+  border-color: var(--completed);
+  animation: completion-ring 0.68s var(--morph-ease) both;
+}
+
+.island.expanded .orb-wrap {
+  left: 18px;
+  top: 15px;
+  width: 20px;
+  height: 20px;
+}
+
+.island.expanded .orb-wrap .orb-large {
+  opacity: 1;
+  transition-delay: 0.07s;
+}
+
+@keyframes waiting-ring {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.58;
+    transform: scale(1.035);
+  }
+}
+
+@keyframes completion-ring {
+  0% {
+    opacity: 0.72;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.22);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orb-wrap,
+  .orb-wrap canvas,
+  .orb-wrap .orb-small,
+  .orb-wrap .orb-large,
+  .island.expanded .orb-wrap .orb-small,
+  .island.expanded .orb-wrap .orb-large {
+    transition-duration: 150ms;
+    transition-delay: 0ms;
+    transition-timing-function: ease;
+  }
+
+  .island[data-attention="permission"] .orb-wrap::after,
+  .island[data-feedback="completed"] .orb-wrap::after {
+    animation: none;
+  }
+}

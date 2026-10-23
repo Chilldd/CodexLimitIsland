@@ -43,6 +43,7 @@
 - 💬 **Idle Status Ticker**: When completely idle with no active sessions or recent turn history, the expanded panel subtitle rotates lighthearted developer status lines every 5 seconds; after a turn finishes, it displays the last turn status and token summary instead.
 - 🗂️ **Multi-Task & Model Visibility**: Displays concurrent sessions and background sub-agent tasks, complete with active model tags and dynamic elapsed timers.
 - 🔢 **Token Consumption Transparency**: Automatically captures and presents Turn Token usage upon task completion as well as cumulative Session Tokens.
+- 🖥️ **Codex Resource Monitoring**: Real-time tracking of CPU and RAM consumption across Codex desktop and background tasks/CLI, complete with interactive trend sparklines.
 - 🛡️ **100% Local Processing & Privacy**:
   - Never accesses credentials, login tokens, prompt contents, or tool execution outputs;
   - Hook JSON payloads are transmitted via local loopback (`127.0.0.1`), preserving only essential state metadata in memory; Token metrics are read from local session logs;
@@ -59,7 +60,7 @@
 
 Visit the [Releases](https://github.com/Chilldd/CodexLimitIsland/releases/latest) page to download the latest Windows x64 installer.
 
-- [Download v0.1.1 Installer (Windows x64)](https://github.com/Chilldd/CodexLimitIsland/releases/download/v0.1.1/CodexLimitIsland_0.1.1_x64-setup.exe)
+- [Download v0.2.0 Installer (Windows x64)](https://github.com/Chilldd/CodexLimitIsland/releases/download/v0.2.0/CodexLimitIsland_0.2.0_x64-setup.exe)
 - [View All Releases](https://github.com/Chilldd/CodexLimitIsland/releases)
 
 Run the installer and follow the setup wizard.
@@ -68,7 +69,7 @@ Run the installer and follow the setup wizard.
 >
 > **Platform Support**: Currently optimized and packaged for Windows x64 (NSIS). macOS/Linux packaging is not yet configured.
 >
-> **Code Signature**: The v0.1.1 installer is not digitally signed. You can verify binary integrity using `SHA256SUMS.txt` provided in the release.
+> **Code Signature**: The v0.2.0 installer is not digitally signed. You can verify binary integrity using `SHA256SUMS.txt` provided in the release.
 
 ---
 

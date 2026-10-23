@@ -14,14 +14,15 @@ export function tone(value: LimitWindow | null): "neutral" | "critical" | "warni
 }
 export function resetText(value: LimitWindow | null): string {
   return value?.resetsAt
-    ? new Date(value.resetsAt * 1000).toLocaleString("zh-CN", {
-        month: "numeric",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }) + " 重置"
-    : "重置时间未知";
+    ? "Resets " +
+        new Date(value.resetsAt * 1000).toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        })
+    : "Reset time unavailable";
 }
 export function elapsed(startedAt: number | null, now: number): string {
   if (!startedAt) return "";
@@ -29,25 +30,25 @@ export function elapsed(startedAt: number | null, now: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 export function exactTokens(value: number | null | undefined): string {
-  return value == null ? "暂无数据" : `${value.toLocaleString("zh-CN")} tokens`;
+  return value == null ? "Not available" : `${value.toLocaleString("en-US")} tokens`;
 }
 export function resetSummary(value: LimitWindow | null, label: string, now: number): string {
-  if (!value) return "随时可开始新对话";
+  if (!value) return "Ready for a new session";
   if (value.resetsAt != null) {
     const minutes = Math.ceil((value.resetsAt * 1000 - now) / 60_000);
-    if (minutes <= 0) return `${label}即将重置`;
-    if (minutes < 60) return `${label} ${minutes}m 后重置`;
+    if (minutes <= 0) return `${label} resets soon`;
+    if (minutes < 60) return `${label} resets in ${minutes}m`;
     if (minutes < 24 * 60) {
       const hours = Math.floor(minutes / 60);
       const rest = minutes % 60;
-      return rest > 0 ? `${label} ${hours}h ${rest}m 后重置` : `${label} ${hours}h 后重置`;
+      return rest > 0 ? `${label} resets in ${hours}h ${rest}m` : `${label} resets in ${hours}h`;
     }
     const days = Math.floor(minutes / (24 * 60));
     const hours = Math.floor((minutes % (24 * 60)) / 60);
-    return hours > 0 ? `${label} ${days}d ${hours}h 后重置` : `${label} ${days}d 后重置`;
+    return hours > 0 ? `${label} resets in ${days}d ${hours}h` : `${label} resets in ${days}d`;
   }
   const remaining = Math.round(value.remainingPercent);
-  if (remaining <= 0) return "请等待下个周期重置";
-  if (remaining >= 100) return `${label}充足，随时可用`;
-  return `${label}剩余 ${remaining}%`;
+  if (remaining <= 0) return "Waiting for the next reset";
+  if (remaining >= 100) return `${label} fully available`;
+  return `${label}: ${remaining}% remaining`;
 }

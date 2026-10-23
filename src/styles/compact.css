@@ -1,0 +1,146 @@
+.minimal-copy,
+.compact-copy {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  transition:
+    opacity 0.18s ease,
+    transform 0.26s var(--morph-ease);
+}
+
+.minimal-copy {
+  left: 38px;
+  right: 10px;
+  top: 50%;
+  height: auto;
+  gap: 4px;
+  justify-content: flex-end;
+  align-items: baseline;
+  transform: translateY(-50%);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  letter-spacing: 0.1px;
+}
+
+.minimal-copy span {
+  color: var(--text-3);
+  font-size: var(--font-xs);
+  font-weight: 500;
+  line-height: var(--leading-tight);
+}
+
+.minimal-copy strong {
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  line-height: var(--leading-tight);
+  text-align: left;
+}
+
+.compact-copy {
+  left: 42px;
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: var(--font-sm);
+  font-weight: 500;
+  line-height: var(--leading-body);
+}
+
+.compact-divider {
+  flex: none;
+  width: 1px;
+  height: 11px;
+  margin: 0 7px;
+  background: rgba(153, 162, 174, 0.4);
+  opacity: 1;
+  border-radius: 0.5px;
+}
+
+.activity-label {
+  animation: status-arrive 0.22s var(--morph-ease) both;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  line-height: var(--leading-body);
+}
+
+.activity-main {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-2);
+  font-weight: 550;
+}
+
+.activity-sub {
+  flex: none;
+  color: var(--text-2);
+  font-size: var(--font-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.compact-limit {
+  flex: none;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.compact-limit > span {
+  color: var(--text-3);
+  font-size: var(--font-xs);
+  font-weight: 500;
+}
+
+.compact-limit strong {
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+
+.layout-single .minimal-copy,
+.layout-multi .minimal-copy,
+.expanded .minimal-copy {
+  opacity: 0;
+  transform: translateY(-5px);
+  pointer-events: none;
+}
+
+.layout-single .compact-copy,
+.layout-multi .compact-copy {
+  opacity: 1;
+  transform: none;
+}
+
+.expanded .compact-copy {
+  opacity: 0;
+  transform: translateY(-5px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .minimal-copy,
+  .compact-copy {
+    transition-duration: 150ms;
+    transition-delay: 0ms;
+    transition-timing-function: ease;
+  }
+
+  .activity-label {
+    animation: none;
+  }
+}

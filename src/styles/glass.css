@@ -1,0 +1,46 @@
+/* 沿用容器类名；深空表面不透射桌面背景，也不随指针改变材质。 */
+.island,
+.glass-container,
+.glass-surface {
+  position: relative;
+  overflow: hidden;
+}
+
+.island,
+.glass-container.glass-standalone {
+  background: linear-gradient(180deg, var(--surface-1), var(--surface-2));
+  box-shadow:
+    0 17px 37px rgba(0, 0, 0, 0.33),
+    0 2px 9px var(--shadow-contact),
+    inset 0 1px 0 rgba(255, 255, 255, 0.027);
+}
+
+/* 原生窗口四周仅有 2px 空间，保持接触影，避免大投影被裁成矩形。 */
+.island {
+  box-shadow:
+    0 1px 2px -1px var(--shadow-contact),
+    inset 0 1px 0 rgba(255, 255, 255, 0.027);
+}
+
+.glass-container.glass-card,
+.glass-surface {
+  background: var(--surface-card);
+}
+
+/* 描边置于内部叠层，不改变内容盒、圆角或任何控件的几何尺寸。 */
+.island::before,
+.glass-container::before,
+.glass-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  box-shadow: inset 0 0 0 1px var(--stroke);
+}
+
+.glass-container.glass-card::before,
+.glass-surface::before {
+  box-shadow: inset 0 0 0 1px var(--stroke-soft);
+}

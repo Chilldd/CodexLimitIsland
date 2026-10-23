@@ -21,6 +21,7 @@ pub(crate) struct AppServer {
 
 impl Drop for AppServer {
     fn drop(&mut self) {
+        crate::system_resources::APP_SERVER_PID.store(0, std::sync::atomic::Ordering::Relaxed);
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
@@ -47,6 +48,7 @@ impl AppServer {
         let mut child = command
             .spawn()
             .map_err(|error| format!("无法启动 Codex App Server：{error}"))?;
+        crate::system_resources::APP_SERVER_PID.store(child.id(), std::sync::atomic::Ordering::Relaxed);
         let stdin = child.stdin.take().ok_or("Codex 标准输入不可用")?;
         let stdout = child.stdout.take().ok_or("Codex 标准输出不可用")?;
         let mut stderr = child.stderr.take().ok_or("Codex 错误输出不可用")?;
