@@ -13,6 +13,46 @@ const ready = (taskTokens: number, sessionTokens: number): TokenUsageState => ({
 });
 const navigation = { disabled: false, expanded: true, openingSession: null, error: null, open: vi.fn(async () => {}) };
 
+test.each([
+  { name: "empty", sessions: [], results: [], title: "Current activity", summary: "0 active" },
+  { name: "running", sessions: [active()], results: [], title: "Current activity", summary: "1 active" },
+  {
+    name: "same session running again",
+    sessions: [active()],
+    results: [done()],
+    title: "Current activity",
+    summary: "1 active",
+  },
+  { name: "completed", sessions: [], results: [done()], title: "Recent results", summary: "0 active · 1 result" },
+  {
+    name: "mixed",
+    sessions: [{ ...active(), id: "running" }],
+    results: [done()],
+    title: "Activity & results",
+    summary: "1 active · 1 result",
+  },
+  {
+    name: "results deduplicated by session",
+    sessions: [],
+    results: [done(), { ...done(19_900), turnId: "previous-turn" }, { ...done(), sessionId: "other" }],
+    title: "Recent results",
+    summary: "0 active · 2 results",
+  },
+])("activity heading distinguishes running tasks from results: $name", ({ sessions, results, title, summary }) => {
+  const view = deriveIslandPresentation(snapshot(sessions, results), null, {}, 20_000);
+  const ui = render(<ExpandedContent view={view} navigation={navigation} expanded />);
+  expect(ui.container.querySelector(".project-heading")?.textContent).toBe(title + summary);
+});
+
+test.each(["completed", "interrupted"] as const)("retained %s result is labelled as the last task", (kind) => {
+  const result = { ...done(), kind };
+  const view = deriveIslandPresentation(snapshot(), null, {}, 60_000, [], false, "fiveHour", { result });
+  const ui = render(<ExpandedContent view={view} navigation={navigation} expanded />);
+  expect(view.expandedTitle).toBe("No active tasks");
+  expect(ui.container.querySelector(".project-heading")?.textContent).toBe("Last result0 active");
+  expect(ui.container.querySelector(".session-text small")?.textContent).toBe(`Last task ${kind}`);
+});
+
 test("one and many sessions share project rows, with models and tokens bound by session and turn", () => {
   const first = { ...done(), sessionId: "one", turnId: "one-completed", project: "Same Project", model: "first-model" };
   const second = {
