@@ -1,17 +1,58 @@
-import { render, within } from "@testing-library/react";
+import { fireEvent, render, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { ExpandedContent } from "../src/components/ExpandedContent";
+import { SessionRow } from "../src/components/SessionRow";
 import { deriveIslandPresentation, resultKey, type TokenUsageState } from "../src/islandState";
 import { expandedHeight } from "../src/domain/metrics";
 import { active, done, snapshot } from "./fixtures";
 
-const ready = (taskTokens: number, sessionTokens: number): TokenUsageState => ({
+const ready = (taskTokens: number | null, sessionTokens: number | null): TokenUsageState => ({
   status: "ready",
   taskTokens,
   sessionTokens,
   readyAt: 20_000,
 });
 const navigation = { disabled: false, expanded: true, openingSession: null, error: null, open: vi.fn(async () => {}) };
+
+test.each([
+  { name: "empty", sessions: [], results: [], title: "Current activity", summary: "0 active" },
+  { name: "running", sessions: [active()], results: [], title: "Current activity", summary: "1 active" },
+  {
+    name: "same session running again",
+    sessions: [active()],
+    results: [done()],
+    title: "Current activity",
+    summary: "1 active",
+  },
+  { name: "completed", sessions: [], results: [done()], title: "Recent results", summary: "0 active · 1 result" },
+  {
+    name: "mixed",
+    sessions: [{ ...active(), id: "running" }],
+    results: [done()],
+    title: "Activity & results",
+    summary: "1 active · 1 result",
+  },
+  {
+    name: "results deduplicated by session",
+    sessions: [],
+    results: [done(), { ...done(19_900), turnId: "previous-turn" }, { ...done(), sessionId: "other" }],
+    title: "Recent results",
+    summary: "0 active · 2 results",
+  },
+])("activity heading distinguishes running tasks from results: $name", ({ sessions, results, title, summary }) => {
+  const view = deriveIslandPresentation(snapshot(sessions, results), null, {}, 20_000);
+  const ui = render(<ExpandedContent view={view} navigation={navigation} expanded />);
+  expect(ui.container.querySelector(".project-heading")?.textContent).toBe(title + summary);
+});
+
+test.each(["completed", "interrupted"] as const)("retained %s result is labelled as the last task", (kind) => {
+  const result = { ...done(), kind };
+  const view = deriveIslandPresentation(snapshot(), null, {}, 60_000, [], false, "fiveHour", { result });
+  const ui = render(<ExpandedContent view={view} navigation={navigation} expanded />);
+  expect(view.expandedTitle).toBe("No active tasks");
+  expect(ui.container.querySelector(".project-heading")?.textContent).toBe("Last result0 active");
+  expect(ui.container.querySelector(".session-text small")?.textContent).toBe(`Last task ${kind}`);
+});
 
 test("one and many sessions share project rows, with models and tokens bound by session and turn", () => {
   const first = { ...done(), sessionId: "one", turnId: "one-completed", project: "Same Project", model: "first-model" };
@@ -71,4 +112,52 @@ test("four or more projects remain in the scroll region while the native height 
   expect(ui.container.querySelector("select")).toBeNull();
   expect(ui.container.querySelectorAll(".session-model")).toHaveLength(4);
   expect(ui.container.querySelectorAll(".session-tokens")).toHaveLength(5);
+});
+
+test("two-line rows preserve full-text hints, navigation and metadata across status changes", () => {
+  const title = "CodexLimitIsland-Desktop-Monitor-Application";
+  const model = "gpt-6.1-sol-long-model-name";
+  const [row] = deriveIslandPresentation(snapshot([{ ...active(), project: title, model }]), null, {}, 20_000).rows;
+  const open = vi.fn(async () => {});
+  const ui = render(<SessionRow row={row} navigation={{ ...navigation, open }} />);
+  const primary = ui.container.querySelector(".session-primary")!;
+  const secondary = ui.container.querySelector(".session-secondary")!;
+  expect(within(primary as HTMLElement).getByText(title).title).toBe(title);
+  expect(primary.querySelector("time")).toBeTruthy();
+  expect(secondary.textContent).toBe(`Token —${model}`);
+  fireEvent.click(within(primary as HTMLElement).getByText(title));
+  expect(open).toHaveBeenCalledExactlyOnceWith(row.sessionId);
+
+  const subtitle = "正在 Applying changes to multiple files...";
+  ui.rerender(
+    <SessionRow
+      row={{ ...row, subtitle, tokenLabel: "Previous", token: ready(2_900_000, 2_900_000) }}
+      navigation={navigation}
+    />,
+  );
+  expect(ui.container.querySelector(".session-text")?.children).toHaveLength(2);
+  expect(within(primary as HTMLElement).getByText(subtitle).title).toBe(subtitle);
+  expect(within(secondary as HTMLElement).getByText(model).title).toBe(model);
+  expect(secondary.textContent).toBe(`Previous 2.9MSession 2.9M${model}`);
+  expect(secondary.querySelector(".session-tokens span")?.getAttribute("title")).toContain("2,900,000");
+
+  ui.rerender(<SessionRow row={row} navigation={{ ...navigation, openingSession: row.sessionId }} />);
+  expect(primary.querySelector("time")?.textContent).toBe("Opening...");
+  ui.rerender(<SessionRow row={row} navigation={{ ...navigation, expanded: false, disabled: true }} />);
+  expect(ui.getByRole("button").tabIndex).toBe(-1);
+  fireEvent.click(ui.getByRole("button"));
+  expect(open).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+  [undefined, "Token —"],
+  [{ status: "loading" } as const, "Loading tokens..."],
+  [{ status: "unavailable" } as const, "Tokens unavailable"],
+  [ready(null, null), "Previous —Session —"],
+])("two-line rows retain existing missing-token placeholders: %j", (token, text) => {
+  const [row] = deriveIslandPresentation(snapshot([active()]), null, {}, 20_000).rows;
+  const ui = render(<SessionRow row={{ ...row, token }} navigation={navigation} />);
+  expect(ui.container.querySelector(".session-secondary")?.textContent).toBe(text);
+  expect(ui.container.querySelector(".session-model")).toBeNull();
+  expect(ui.container.querySelector(".session-text")?.children).toHaveLength(2);
 });

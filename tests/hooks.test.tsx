@@ -205,6 +205,9 @@ test("Presentation has no active-session second tick, but Result and late Token 
   expect(hook.result.current.view.visibleResults).toHaveLength(1);
   await act(() => vi.advanceTimersByTimeAsync(1));
   expect(hook.result.current.view.visibleResults).toHaveLength(0);
+  hook.rerender({ data: snapshot(), tokens: {} });
+  expect(hook.result.current.view.activityHeading).toEqual({ title: "Last result", summary: "0 active" });
+  expect(hook.result.current.view.rows[0].subtitle).toBe("Last task completed");
 });
 
 test("running sessions retain their own completed usage after registry and query-cache cleanup", () => {

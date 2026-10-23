@@ -6,6 +6,8 @@
 
 ## 🏛️ 核心架构与设计
 
+- [视觉设计规范 (design.md)](design.md)
+  - 深空极简配色、文字语义 Token、各区域文字层级、扫光效果及视觉验收要求。
 - [状态系统与事件流 (state-machine.md)](state-machine.md)
   - 详细阐述会话生命周期、Hook 事件归约规则、展示层派生（`deriveIslandPresentation`）以及展开与动画状态机。
 

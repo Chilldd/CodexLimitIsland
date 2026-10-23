@@ -130,6 +130,7 @@ export type IslandPresentation = {
   showTokenSummary: boolean;
   nextUpdateAt: number | null;
   headline: { sessionId?: string; title: string; subtitle: string };
+  activityHeading: { title: string; summary: string };
   rows: SessionRowView[];
   meta: MetaView | null;
   usageRows: UsageRowView[];
@@ -340,7 +341,13 @@ export function deriveIslandPresentation(
       sessionId: result.sessionId,
       title: result.project || "Codex session",
       tooltip: result.project ?? "",
-      subtitle: result.kind === "completed" ? "Task completed" : "Task interrupted",
+      subtitle: idleTurn
+        ? result.kind === "completed"
+          ? "Last task completed"
+          : "Last task interrupted"
+        : result.kind === "completed"
+          ? "Task completed"
+          : "Task interrupted",
       model: result.model,
       token: result.kind === "completed" ? rowToken : undefined,
       tokenLabel: "Task",
@@ -348,6 +355,19 @@ export function deriveIslandPresentation(
       elapsed: { from: result.startedAt, to: result.finishedAt },
     });
   }
+  const resultRows = rows.length - sessions.length;
+  const activityHeading = {
+    title: idleTurn
+      ? "Last result"
+      : resultRows
+        ? sessions.length
+          ? "Activity & results"
+          : "Recent results"
+        : "Current activity",
+    summary:
+      `${sessions.length} active` +
+      (resultRows && !idleTurn ? ` · ${resultRows} ${resultRows === 1 ? "result" : "results"}` : ""),
+  };
   return {
     layout,
     attention,
@@ -376,6 +396,7 @@ export function deriveIslandPresentation(
       title: primarySession?.project || primaryResult?.result.project || idleTurn?.result.project || "Codex session",
       subtitle: expandedSubtitle,
     },
+    activityHeading,
     rows,
     meta:
       layout === "multi"

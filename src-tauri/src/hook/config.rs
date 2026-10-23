@@ -21,9 +21,24 @@ pub(crate) fn default_hooks_path() -> Result<PathBuf, String> {
     Ok(PathBuf::from(home).join(".codex").join("hooks.json"))
 }
 
-/// 格式化命令字符串：使用带引号格式以确保含空格路径安全执行。
+/// Windows Hook 使用 PowerShell 语法；带引号的路径必须通过调用运算符执行。
 pub(crate) fn format_hook_command(executable: &Path) -> String {
-    format!("\"{}\" --hook", executable.display())
+    let path = executable.display().to_string();
+    #[cfg(windows)]
+    {
+        if path
+            .chars()
+            .all(|ch| ch.is_alphanumeric() || matches!(ch, '\\' | '/' | ':' | '.' | '_' | '-'))
+        {
+            format!("{path} --hook")
+        } else {
+            format!("& '{}' --hook", path.replace('\'', "''"))
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        format!("\"{path}\" --hook")
+    }
 }
 
 fn is_codexlimit_handler(handler: &Value) -> bool {
@@ -165,12 +180,61 @@ pub(crate) fn configure_codex_hooks() -> Result<PathBuf, String> {
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
+    const TEST_COMMAND: &str = r"C:\Test\codexlimit.exe --hook";
+    #[cfg(not(windows))]
+    const TEST_COMMAND: &str = "\"C:\\Test\\codexlimit.exe\" --hook";
+
+    #[cfg(windows)]
+    #[test]
+    fn merged_hook_command_executes_in_powershell() {
+        use std::os::windows::process::CommandExt;
+        use std::process::{Command, Stdio};
+
+        let directory = tempfile::tempdir().unwrap();
+        for name in ["plain", "中文 O'Brien $() & `"] {
+            let parent = directory.path().join(name);
+            std::fs::create_dir(&parent).unwrap();
+            let executable = parent.join("codexlimit.cmd");
+            std::fs::write(&executable, "@echo off\r\necho %~1\r\n").unwrap();
+
+            let merged = merge_hooks_config(None, &executable).unwrap();
+            let parsed: Value = serde_json::from_str(&merged).unwrap();
+            let command = parsed["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+                .as_str()
+                .unwrap();
+            let output = Command::new("powershell.exe")
+                .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command])
+                .stdin(Stdio::null())
+                .creation_flags(crate::constants::CREATE_NO_WINDOW)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "生成的 Hook 命令执行失败：{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "--hook");
+        }
+    }
+
     #[test]
     fn format_hook_command_quotes_path() {
         let path = Path::new(r"C:\Program Files\Codex Limit\codexlimit.exe");
+        #[cfg(windows)]
+        let expected = "& 'C:\\Program Files\\Codex Limit\\codexlimit.exe' --hook";
+        #[cfg(not(windows))]
+        let expected = "\"C:\\Program Files\\Codex Limit\\codexlimit.exe\" --hook";
+        assert_eq!(format_hook_command(path), expected);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn format_hook_command_preserves_simple_path_and_escapes_apostrophe() {
+        assert_eq!(format_hook_command(Path::new(r"C:\Test\codexlimit.exe")), TEST_COMMAND);
         assert_eq!(
-            format_hook_command(path),
-            "\"C:\\Program Files\\Codex Limit\\codexlimit.exe\" --hook"
+            format_hook_command(Path::new(r"C:\O'Brien $HOME\codexlimit.exe")),
+            "& 'C:\\O''Brien $HOME\\codexlimit.exe' --hook"
         );
     }
 
@@ -186,7 +250,7 @@ mod tests {
             let item_arr = items.as_array().unwrap();
             assert_eq!(item_arr.len(), 1);
             let cmd = item_arr[0]["hooks"][0]["command"].as_str().unwrap();
-            assert_eq!(cmd, "\"C:\\Test\\codexlimit.exe\" --hook");
+            assert_eq!(cmd, TEST_COMMAND);
         }
     }
 
@@ -218,16 +282,17 @@ mod tests {
             session_start[0]["hooks"][0]["command"].as_str().unwrap(),
             "notify-feishu.exe"
         );
-        assert_eq!(
-            session_start[1]["hooks"][0]["command"].as_str().unwrap(),
-            "\"C:\\Test\\codexlimit.exe\" --hook"
-        );
+        assert_eq!(session_start[1]["hooks"][0]["command"].as_str().unwrap(), TEST_COMMAND);
     }
 
     #[test]
     fn merge_updates_existing_codexlimit_hook_in_place_without_duplicates() {
         let old_exe = Path::new(r"C:\Old\codexlimit.exe");
         let initial = merge_hooks_config(None, old_exe).unwrap();
+        let mut initial: Value = serde_json::from_str(&initial).unwrap();
+        initial["hooks"]["SessionStart"][0]["hooks"][0]["command"] =
+            Value::String("\"C:\\Old\\codexlimit.exe\" --hook".to_string());
+        let initial = serde_json::to_string(&initial).unwrap();
 
         let new_exe = Path::new(r"D:\New\codexlimit.exe");
         let updated = merge_hooks_config(Some(&initial), new_exe).unwrap();
@@ -235,10 +300,12 @@ mod tests {
         let session_start = parsed["hooks"]["SessionStart"].as_array().unwrap();
 
         assert_eq!(session_start.len(), 1);
-        assert_eq!(
-            session_start[0]["hooks"][0]["command"].as_str().unwrap(),
-            "\"D:\\New\\codexlimit.exe\" --hook"
-        );
+        #[cfg(windows)]
+        let expected = r"D:\New\codexlimit.exe --hook";
+        #[cfg(not(windows))]
+        let expected = "\"D:\\New\\codexlimit.exe\" --hook";
+        assert_eq!(session_start[0]["hooks"][0]["command"].as_str().unwrap(), expected);
+        assert_eq!(merge_hooks_config(Some(&updated), new_exe).unwrap(), updated);
     }
 
     #[test]

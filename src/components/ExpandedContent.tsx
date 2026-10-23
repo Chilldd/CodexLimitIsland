@@ -37,12 +37,8 @@ export function ExpandedContent({
         <span className="island-chevron" aria-hidden="true" />
       </div>
       <div className="project-heading">
-        <span>Current activity</span>
-        <span>
-          {view.rows.length
-            ? `${view.rows.length} ${view.rows.length === 1 ? "session" : "sessions"}`
-            : "No active tasks"}
-        </span>
+        <span>{view.activityHeading.title}</span>
+        <span>{view.activityHeading.summary}</span>
       </div>
       <div className="session-list" role="region" aria-label="Project activity" tabIndex={expanded ? 0 : -1}>
         {view.rows.length ? (

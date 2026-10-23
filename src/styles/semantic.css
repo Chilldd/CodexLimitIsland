@@ -11,5 +11,15 @@
 }
 
 .neutral {
-  color: var(--text-3);
+  color: var(--text-tertiary);
+}
+
+.island[data-attention="permission"] .activity-main,
+.activity-head[data-attention="permission"] > span:first-child {
+  color: var(--attention-permission);
+}
+
+.island[data-attention="quota"] .activity-main,
+.activity-head[data-attention="quota"] > span:first-child {
+  color: var(--attention-quota);
 }
