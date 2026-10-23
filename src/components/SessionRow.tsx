@@ -1,6 +1,7 @@
-import type { SessionRowView } from "../islandState";
+import { compactTokens, type SessionRowView } from "../islandState";
 import { Elapsed } from "./Elapsed";
 import { JumpIcon } from "./JumpIcon";
+import { exactTokens } from "../domain/format";
 export type NavigationView = {
   disabled: boolean;
   expanded: boolean;
@@ -15,7 +16,7 @@ export function SessionRow({ row, navigation }: { row: SessionRowView; navigatio
       className="session-row"
       disabled={navigation.disabled}
       tabIndex={navigation.expanded ? 0 : -1}
-      title="在 Codex App 中打开此对话"
+      title="Open this session in Codex"
       onClick={(event) => {
         event.stopPropagation();
         void navigation.open(row.sessionId);
@@ -25,6 +26,27 @@ export function SessionRow({ row, navigation }: { row: SessionRowView; navigatio
       <span className="session-text">
         <strong title={row.tooltip}>{row.title}</strong>
         <small>{row.subtitle}</small>
+        <span className="session-tokens">
+          {row.token?.status === "ready" ? (
+            <>
+              <span title={`${row.tokenLabel ?? "Task"}: ${exactTokens(row.token.taskTokens)}`}>
+                {row.tokenLabel ?? "Task"}{" "}
+                <b>{row.token.taskTokens == null ? "—" : compactTokens(row.token.taskTokens)}</b>
+              </span>
+              <span title={`Session total: ${exactTokens(row.token.sessionTokens)} (as of last completion)`}>
+                Session <b>{row.token.sessionTokens == null ? "—" : compactTokens(row.token.sessionTokens)}</b>
+              </span>
+            </>
+          ) : (
+            <span>
+              {row.token?.status === "loading"
+                ? "Loading tokens..."
+                : row.token?.status === "unavailable"
+                  ? "Tokens unavailable"
+                  : "Token —"}
+            </span>
+          )}
+        </span>
       </span>
       <span className="session-meta">
         {row.model && (
@@ -32,7 +54,7 @@ export function SessionRow({ row, navigation }: { row: SessionRowView; navigatio
             {row.model}
           </span>
         )}
-        {navigation.openingSession === row.sessionId ? <time>打开中…</time> : <Elapsed {...row.elapsed} />}
+        {navigation.openingSession === row.sessionId ? <time>Opening...</time> : <Elapsed {...row.elapsed} />}
       </span>
       <span className="session-open-icon" aria-hidden="true">
         <JumpIcon />

@@ -18,7 +18,7 @@ pub(crate) fn valid_hit_region(width: f64, height: f64, development: bool) -> bo
     width.is_finite()
         && height.is_finite()
         && (100.0..=390.0).contains(&width)
-        && ((40.0..=424.0).contains(&height) || (development && width == 384.0 && height == 550.0))
+        && ((40.0..=444.0).contains(&height) || (development && width == 384.0 && height == 550.0))
 }
 
 #[cfg(windows)]
@@ -61,14 +61,14 @@ mod tests {
     use super::*;
     #[test]
     fn hit_region_bounds_keep_debug_exception_out_of_release() {
-        for (width, height) in [(100.0, 40.0), (168.0, 42.0), (384.0, 424.0)] {
+        for (width, height) in [(100.0, 40.0), (168.0, 42.0), (384.0, 444.0)] {
             assert!(valid_hit_region(width, height, false));
         }
         assert!(valid_hit_region(384.0, 550.0, true));
         assert!(!valid_hit_region(384.0, 550.0, false));
         for (width, height) in [
             (390.0, 550.0),
-            (384.0, 425.0),
+            (384.0, 445.0),
             (99.0, 40.0),
             (391.0, 42.0),
             (100.0, 39.0),

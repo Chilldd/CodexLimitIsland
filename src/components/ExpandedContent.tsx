@@ -1,10 +1,8 @@
 import type { IslandPresentation } from "../islandState";
 import type { SystemResourceSnapshot } from "../generated/contracts";
-import { exactTokens } from "../domain/format";
 import { SessionRow, type NavigationView } from "./SessionRow";
 import { UsagePanel } from "./UsagePanel";
 import { Elapsed } from "./Elapsed";
-import { JumpIcon } from "./JumpIcon";
 import { IdlePromptTicker } from "./IdlePromptTicker";
 import { SystemResourceRow } from "./SystemResourceRow";
 
@@ -21,81 +19,50 @@ export function ExpandedContent({
   systemSnapshot?: SystemResourceSnapshot | null;
   cpuHistory?: number[];
 }) {
-  const { headline, meta } = view;
   return (
     <div className="expanded-copy" aria-hidden={!expanded} inert={expanded ? undefined : true}>
-      <div className="activity-head">
+      <div
+        className="activity-head"
+        data-activity={view.primarySession?.activity ?? undefined}
+        data-attention={view.attention}
+        data-feedback={view.feedback}
+      >
         <span key={view.expandedTitle} title={view.expandedTitle}>
           {view.expandedTitle}
+          <span className="text-shimmer" aria-hidden="true">
+            {view.expandedTitle}
+          </span>
         </span>
-        {view.layout !== "multi" && (
-          <>
-            {headline.sessionId ? (
-              <button
-                type="button"
-                className="session-link"
-                disabled={navigation.disabled}
-                tabIndex={navigation.expanded ? 0 : -1}
-                title="在 Codex App 中打开此对话"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void navigation.open(headline.sessionId!);
-                }}
-              >
-                <strong>{headline.title}</strong>
-                <span className="session-link-icon" aria-hidden="true">
-                  <JumpIcon />
-                </span>
-              </button>
-            ) : (
-              <strong>Codex</strong>
-            )}
-            <small>
-              {navigation.openingSession === headline.sessionId ? (
-                "正在打开 Codex App…"
-              ) : view.isIdle && !headline.sessionId ? (
-                <IdlePromptTicker active={navigation.expanded} />
-              ) : (
-                headline.subtitle
-              )}
-            </small>
-          </>
-        )}
-        <div className="meta">
-          {navigation.error ? (
-            <span className="navigation-error" role="alert" title={navigation.error}>
-              {navigation.error}
-            </span>
-          ) : (
-            meta && (
-              <>
-                <span>{meta.label}</span>
-                {meta.elapsed ? <Elapsed {...meta.elapsed} /> : <time>{meta.time}</time>}
-              </>
-            )
-          )}
-        </div>
+        <div className="meta">{view.meta?.elapsed && <Elapsed {...view.meta.elapsed} />}</div>
+        <span className="island-chevron" aria-hidden="true" />
       </div>
+      <div className="project-heading">
+        <span>Current activity</span>
+        <span>
+          {view.rows.length
+            ? `${view.rows.length} ${view.rows.length === 1 ? "session" : "sessions"}`
+            : "No active tasks"}
+        </span>
+      </div>
+      <div className="session-list" role="region" aria-label="Project activity" tabIndex={expanded ? 0 : -1}>
+        {view.rows.length ? (
+          view.rows.map((row) => <SessionRow key={row.key} row={row} navigation={navigation} />)
+        ) : (
+          <div className="project-empty">
+            <strong>Codex</strong>
+            {view.isIdle ? <IdlePromptTicker active={expanded} /> : <span>{view.expandedSubtitle}</span>}
+          </div>
+        )}
+      </div>
+      {navigation.error && (
+        <span className="navigation-error" role="alert" title={navigation.error}>
+          {navigation.error}
+        </span>
+      )}
       <SystemResourceRow snapshot={systemSnapshot ?? null} cpuHistory={cpuHistory ?? []} />
-      {view.showTokenSummary && view.token?.status === "ready" && (
-        <div className="token-summary">
-          <div>
-            <span>本次任务</span>
-            <strong>{exactTokens(view.token.taskTokens)}</strong>
-          </div>
-          <div>
-            <span>当前会话</span>
-            <strong>{exactTokens(view.token.sessionTokens)}</strong>
-          </div>
-        </div>
-      )}
-      {view.rowCount > 1 && (
-        <div className="session-list">
-          {view.rows.map((row) => (
-            <SessionRow key={row.key} row={row} navigation={navigation} />
-          ))}
-        </div>
-      )}
+      <div className="quota-heading">
+        <span>Rate limits</span>
+      </div>
       <UsagePanel rows={view.usageRows} />
     </div>
   );

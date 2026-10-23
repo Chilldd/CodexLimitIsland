@@ -1,0 +1,59 @@
+@keyframes status-arrive {
+  from {
+    opacity: 0.35;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 高光叠在原文字上，基础字色不变；只在字形内从左向右经过。 */
+.text-shimmer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  white-space: inherit;
+  overflow: hidden;
+  text-overflow: inherit;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background: linear-gradient(
+    104deg,
+    transparent 37%,
+    rgba(237, 250, 255, 0.17) 44%,
+    rgba(246, 253, 255, 0.93) 50%,
+    rgba(237, 250, 255, 0.2) 55%,
+    transparent 63%
+  );
+  background-size: 260% 100%;
+  background-position: 125% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .island:not(.expanded)[data-activity][data-attention="none"][data-feedback="none"] .activity-main > .text-shimmer,
+  .expanded .activity-head[data-activity][data-attention="none"][data-feedback="none"] > span > .text-shimmer {
+    animation: text-shimmer 4.5s linear infinite;
+  }
+}
+
+@keyframes text-shimmer {
+  0%,
+  12% {
+    opacity: 0;
+    background-position: 125% 0;
+  }
+  15%,
+  56% {
+    opacity: 1;
+  }
+  64%,
+  100% {
+    opacity: 0;
+    background-position: -125% 0;
+  }
+}

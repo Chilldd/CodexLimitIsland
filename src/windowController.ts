@@ -38,7 +38,7 @@ export function createIslandWindowController(
   const timers = createInteractionTimers(timer);
   let model: WindowModel = {
     compact: compactSize("minimal"),
-    expandedHeight: expandedHeight(1, false),
+    expandedHeight: expandedHeight(1),
     reducedMotion: false,
     debug: false,
   };

@@ -10,6 +10,7 @@ import type { SystemResourceSnapshot } from "../generated/contracts";
 import { OrbStack } from "./OrbStack";
 import { ExpandedContent } from "./ExpandedContent";
 import type { NavigationView } from "./SessionRow";
+import { useGlassLight } from "../hooks/useGlassLight";
 type Props = {
   view: IslandPresentation;
   detail: IslandPresentation;
@@ -53,6 +54,13 @@ export function Island({
 }: Props) {
   const compactRef = useRef<HTMLDivElement>(null);
   const lastKey = useRef<string>("");
+  const {
+    ref: islandRef,
+    onPointerMove: onGlassMove,
+    onPointerLeave: onGlassLeave,
+  } = useGlassLight<HTMLElement>({
+    disabled: reducedMotion,
+  });
 
   useLayoutEffect(() => {
     if (view.layout === "minimal" || !onMeasureCompactWidth) return;
@@ -72,9 +80,11 @@ export function Island({
 
   return (
     <main
+      ref={islandRef}
       className={`island layout-${view.layout} ${expanded ? "expanded" : ""}`}
       data-attention={view.attention}
       data-feedback={view.feedback}
+      data-activity={view.primarySession?.activity ?? undefined}
       data-tier={view.compactTier}
       style={{
         ...(expanded ? { height } : undefined),
@@ -84,8 +94,19 @@ export function Island({
       }}
       tabIndex={0}
       onMouseEnter={enter}
-      onMouseLeave={leave}
+      onMouseLeave={() => {
+        onGlassLeave();
+        leave();
+      }}
       {...drag}
+      onPointerMove={(event) => {
+        onGlassMove(event);
+        drag.onPointerMove(event);
+      }}
+      onPointerCancel={(event) => {
+        onGlassLeave();
+        drag.onPointerCancel(event);
+      }}
       onTransitionEnd={onTransitionEnd}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget) return;
@@ -94,7 +115,7 @@ export function Island({
         toggle();
       }}
       onClick={(event) => {
-        if (!(event.target as Element).closest("button")) toggle();
+        if (!(event.target as Element).closest("button, .session-list, .system-resource-row")) toggle();
       }}
       aria-label={view.ariaLabel}
     >
@@ -108,11 +129,21 @@ export function Island({
           <span className="activity-label" key={view.compactLabel} title={view.compactLabel}>
             {view.compactLabel.includes(" · ") ? (
               <>
-                <span className="activity-main">{view.compactLabel.split(" · ")[0]}</span>
+                <span className="activity-main">
+                  {view.compactLabel.split(" · ")[0]}
+                  <span className="text-shimmer" aria-hidden="true">
+                    {view.compactLabel.split(" · ")[0]}
+                  </span>
+                </span>
                 <small className="activity-sub">{view.compactLabel.split(" · ")[1]}</small>
               </>
             ) : (
-              <span className="activity-main">{view.compactLabel}</span>
+              <span className="activity-main">
+                {view.compactLabel}
+                <span className="text-shimmer" aria-hidden="true">
+                  {view.compactLabel}
+                </span>
+              </span>
             )}
           </span>
           <span className="compact-divider" aria-hidden="true" />

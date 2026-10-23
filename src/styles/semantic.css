@@ -1,0 +1,15 @@
+.healthy {
+  color: var(--tone-healthy-fg);
+}
+
+.warning {
+  color: var(--tone-warning-fg);
+}
+
+.critical {
+  color: var(--tone-critical-fg);
+}
+
+.neutral {
+  color: var(--text-3);
+}

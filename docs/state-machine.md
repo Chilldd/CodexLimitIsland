@@ -56,13 +56,13 @@ ActiveTool、前台 Activity、当前命令是不同概念。`tool_activity()` �
 
 `deriveIslandPresentation()` 是纯函数，输入 ActivitySnapshot、额度、Token 状态、当前时间和展开期间保留的 Result 集合。它显式排序活动 Session（有效 Permission 优先，其次最近活动时间）和最近 Result（完成时间倒序），同时输出 `sessions` 与 `visibleResults`。Compact 主信息仍按 Permission、额度用尽、活动 Session、Result、Idle 的顺序选择；有活动 Session 和 Result 并存时，Compact 显示运行与完成数量，Expanded 同时列出活动行和结果行。`layout` 只取 `minimal`、`single`、`multi`；Attention 和 Feedback 独立存在。例如多 Session 等待审批仍是 `layout=multi, attention=permission`。`effectiveAttention()` 同时检查 Root 与 Agent，并统一用于排序、主 Session、行文案和黄色 Dot。Orb 表示动作，Ring / Feedback 表示审批、额度或完成反馈；Activity 到文案及 Orb 的映射也集中在此文件。
 
-紧凑态的 Result 默认展示 3 秒。Completed 的 Token 在准备好后还能展示约 2.8 秒；`loading` 与 `unavailable` 的主文案均为“已完成”，`ready` 且有本次 Token 时显示“完成 · 数量”。Expanded 结果行显示项目、结果和本次 Token；独立 Result 还能使用快照中的项目、模型与起始时间展示详情。`useHeldResults()` 在 expanding、expanded 和 collapsing 期间保留最近 Result，到 compact 才释放；即使 Rust 的 12 秒保留期结束，展开内容与已查询到的 Token 仍可显示。活跃 Session、Permission 和额度只影响 Compact 主信息及标题，不会从 `visibleResults` 中删除 Result。
+界面固定文案使用英文，保留项目名和模型的原始值。紧凑态的 Result 默认展示 3 秒。Completed 的 Token 在准备好后还能展示约 2.8 秒；`loading` 与 `unavailable` 的主文案均为“已完成”，`ready` 且有本次 Token 时显示“完成 · 数量”。展开项目行显示所属 Session 的模型、任务 Token 和会话累计 Token；独立 Result 使用完成时快照中的项目、模型与起始时间。运行与完成数量汇总不重复计算同一正在运行 Session 的上次结果，但仍保留完整 `visibleResults`。`useHeldResults()` 在 expanding、expanded 和 collapsing 期间保留最近 Result，到 compact 才释放；即使 Rust 的 12 秒保留期结束，展开内容与已查询到的 Token 仍可显示。Permission 和额度不会从 `visibleResults` 中删除 Result。
 
-`deriveIslandPresentation()` 同时输出类型化的 rows、headline、meta、usageRows、额度 tone 与 ARIA 文案；导航忙碌和错误由交互层管理。项目回退、子代理数量和状态文案不在 JSX 中重复推导。
+`deriveIslandPresentation()` 同时输出类型化的 rows、headline、meta、usageRows、额度 tone 与 ARIA 文案；导航忙碌和错误由交互层管理。项目回退、子代理数量和状态文案不在 JSX 中重复推导。展开态始终使用统一项目区域，rows 按 Session ID 合并运行状态与该会话最近结果，同名但不同 Session 的项目保持独立。模型、任务 Token 和会话 Token 均属于各自项目行；最多显示三行，更多项目通过纵向滚动访问。
 
 `useIslandPresentation()` 只为下一个 Result 到期时间设置一次性 `setTimeout`，结合事件观察时间和相关 Token readyAt 进行纯函数推导；没有保留结果时复用 Live 展示。Elapsed 的秒级刷新仅更新时间文本组件，不再触发整棵 App 或 Presentation。完全 Idle 且无待过期 Result 时不设周期定时器。Token 状态、Hook 快照和额度更新会触发即时推导，不需要常驻轮询。
 
-Token 查询由 Completed Turn Result 驱动，键优先使用 `sessionId:turnId`；旧 Hook 缺 Turn ID 时才使用完成时间构成回退键。`useTurnTokenUsage()` 在 300、800、800 毫秒后依次尝试查询，得到本次 Token 设为 `ready`，连续无数据或调用失败设为 `unavailable`。Interrupted Result 不查询 Token。
+Token 查询由 Completed Turn Result 驱动，键优先使用 `sessionId:turnId`；旧 Hook 缺 Turn ID 时才使用完成时间构成回退键。`useTurnTokenUsage()` 在 300、800、800 毫秒后依次尝试查询，得到本次 Token 设为 `ready`，连续无数据或调用失败设为 `unavailable`。Interrupted Result 不查询 Token。Presentation 按 Session 保留相关最近结果及已读取用量：只保留活动会话、当前快照 / held Result 和全局最近结果引用的摘要，其余释放。运行行以“上次任务”标识已完成 Turn 的用量，累计值也是该次读取的快照；Session Activity 不触发 Token 查询。
 
 ## React 展开与窗口交互
 
@@ -79,11 +79,13 @@ stateDiagram-v2
   collapsing --> expanding: EXPAND
 ```
 
-`useInteractionMachine()` 用 `useReducer` 与同步 ref 维护交互阶段，拖动由 `useHorizontalDrag()` 管理。`useIslandWindow()` 将原生接口注入 `windowController.ts`，尺寸与点击区域操作通过队列串行执行，避免快速展开/收起时旧异步操作覆盖新状态。展开时先放大原生窗口并设置点击区域，再进入 `expanded`；收起时先播放 340 毫秒 Morph，再缩小原生窗口。鼠标离开岛区域后等待 260 毫秒才自动收起；在等待期间重新进入会取消计时。展开过程中鼠标离开也遵守同一个延迟。用户点击收起仍立即开始收起过程。
+`useInteractionMachine()` 用 `useReducer` 与同步 ref 维护交互阶段，拖动由 `useHorizontalDrag()` 管理。`useIslandWindow()` 将原生接口注入 `windowController.ts`，尺寸与点击区域操作通过队列串行执行，避免快速展开/收起时旧异步操作覆盖新状态。展开时先放大原生窗口并设置点击区域，再进入 `expanded`；收起时先播放 340 毫秒 Morph，再缩小原生窗口。鼠标离开岛区域后等待 420 毫秒才自动收起；在等待期间重新进入会取消计时。展开过程中鼠标离开也遵守同一个延迟。用户点击收起仍立即开始收起过程。
 
-`nativeOperations.ts` 提供可注入原生接口与计时器的执行函数。交互转换时递增队列版本；等待尺寸或点击区域完成后再次校验版本，组件卸载后停止后续操作，避免旧操作在状态绕回同名阶段时继续执行。收起优先响应高度过渡结束事件，兜底恢复原生窗口的延迟保持为 420 毫秒，减少动态效果时为 190 毫秒。开发构建仅额外允许 `384×550` 的 Debug 点击区域，Release 仍限制在 `100..=390 × 40..=424`。
+`nativeOperations.ts` 提供可注入原生接口与计时器的执行函数。交互转换时递增队列版本；等待尺寸或点击区域完成后再次校验版本，组件卸载后停止后续操作，避免旧操作在状态绕回同名阶段时继续执行。收起优先响应高度过渡结束事件，兜底恢复原生窗口的延迟保持为 420 毫秒，减少动态效果时为 190 毫秒。开发构建仅额外允许 `384×550` 的 Debug 点击区域，Release 仍限制在 `100..=390 × 40..=444`。
 
-DOM 同时保留 `layout-*` 与 `expanded` 类，并以 `data-attention`、`data-feedback` 表示其它维度。CSS 不自行推断业务状态。`styles/tokens.css` 与 `domain/metrics.ts` 中的尺寸由跨文件测试约束：2px 根内边距将 96px 及紧凑态 136/156/172px 可见宽度对应到 100px 及 140/160/176px 点击区；380px 展开宽度对应 384px 点击区，最大高度 420px 对应 424px 原生上限。64px Orb 画布仍以 scale(.75) 呈现为 48px。`useReducedMotion()` 订阅系统设置变化，并在卸载时清理。
+DOM 同时保留 `layout-*` 与 `expanded` 类，并以 `data-attention`、`data-feedback` 表示其它维度。CSS 不自行推断业务状态。`styles/tokens.css` 与 `domain/metrics.ts` 中的尺寸由跨文件测试约束：2px 根内边距将 96px 及紧凑态 136/156/172px 可见宽度对应到 100px 及 140/160/176px 点击区；380px 展开宽度对应 384px 点击区，最大允许高度 440px 对应 444px 原生上限。统一布局按 1 / 2 / 3 个项目行分别使用 316 / 376 / 436px，高于三行时停止增高。展开与收缩的 Orb 画布均按 20px 逻辑尺寸直接绘制，不再使用 CSS 缩小画布；原有透明度过渡与暂停规则保持不变。监控栏固定两行显示总览与明细，不保留悬停或点击切换状态。`useReducedMotion()` 订阅系统设置变化，并在卸载时清理。
+
+`App.css` 统一导入样式。公共 tokens、基础样式、语义色和组件样式分别管理；`styles/glass.css` 沿用容器类名，提供不透射背景的冷黑表面与低对比内卡片，不使用背景模糊或折射。视觉规范见 `design.md`。
 
 开发模式下通过 `?debugIsland` 打开 Presentation Playground；它构造 ActivitySnapshot、UsageSnapshot 和 TokenUsageState，仍经同一个 `deriveIslandPresentation()` 渲染，不影响真实额度和 Hook 数据。Rust 状态机测试位于 `activity/tests.rs`；Presentation 与 Interaction 测试位于 `tests/islandState.test.ts`、`tests/presentation.test.ts`。真实窗口尺寸、Hit Region、Hook 信任与自动启动仍需在 Windows 运行环境中回归。
 

@@ -1,5 +1,46 @@
-import { useState } from "react";
 import type { SystemResourceSnapshot } from "../generated/contracts";
+import { GlassContainer } from "./GlassContainer";
+
+function ResourceIcon({ kind }: { kind: "cpu" | "ram" | "desktop" | "tasks" }) {
+  return (
+    <svg
+      className={`sys-icon sys-icon-${kind}`}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {kind === "cpu" && (
+        <>
+          <rect x="4" y="4" width="8" height="8" rx="1.5" />
+          <path d="M6 2v2m4-2v2M6 12v2m4-2v2M2 6h2m-2 4h2m8-4h2m-2 4h2" />
+          <path d="M6.5 6.5h3v3h-3z" />
+        </>
+      )}
+      {kind === "ram" && (
+        <>
+          <rect x="2" y="4" width="12" height="7" rx="1.4" />
+          <path d="M5 6.5v2m3-2v2m3-2v2M4 11v2m3-2v2m3-2v2m3-2v2" />
+        </>
+      )}
+      {kind === "desktop" && (
+        <>
+          <rect x="2" y="2.5" width="12" height="8" rx="1.4" />
+          <path d="M8 10.5v3m-3 0h6" />
+        </>
+      )}
+      {kind === "tasks" && (
+        <>
+          <rect x="1.5" y="2.5" width="13" height="11" rx="1.8" />
+          <path d="m4 6 2 2-2 2m4 0h3" />
+        </>
+      )}
+    </svg>
+  );
+}
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return "0 MB";
@@ -40,14 +81,10 @@ export function SystemResourceRow({
   snapshot: SystemResourceSnapshot | null;
   cpuHistory: number[];
 }) {
-  const [hovered, setHovered] = useState(false);
-  const [locked, setLocked] = useState(false);
-
   const total = snapshot?.total ?? { cpu_percent: 0, memory_bytes: 0 };
   const app = snapshot?.app ?? { cpu_percent: 0, memory_bytes: 0 };
   const tasks = snapshot?.tasks ?? { cpu_percent: 0, memory_bytes: 0 };
 
-  const hasTasks = tasks.memory_bytes > 0 || tasks.cpu_percent > 0.05;
   const points = sparklinePoints(cpuHistory);
 
   const cpuColor =
@@ -55,27 +92,17 @@ export function SystemResourceRow({
       ? "var(--tone-critical-fg, #ef4444)"
       : total.cpu_percent >= 15
         ? "var(--tone-active-fg, #38bdf8)"
-        : "rgba(226, 235, 235, 0.75)";
-
-  const showDetail = hovered || locked;
+        : "var(--monitor-value)";
 
   return (
-    <div
-      className={`system-resource-row ${showDetail ? "showing-detail" : ""}`}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onClick={(e) => {
-        e.stopPropagation();
-        setLocked((prev) => !prev);
-      }}
-    >
-      {/* 默认总览视态：CPU 走势图 + RAM 总和 */}
-      <div className="sys-view-summary">
+    <GlassContainer className="system-resource-row" elevation="card" interactive={false}>
+      <div className="sys-view-summary" title="Codex total: Desktop + Tasks/CLI">
         <div className="sys-metrics-left">
-          <span className="sys-badge">
-            <span className="sys-label">CPU</span>
-            <strong style={{ color: cpuColor }}>{formatCpu(total.cpu_percent)}</strong>
-          </span>
+          <ResourceIcon kind="cpu" />
+          <span className="sys-label">CPU</span>
+          <strong className="sys-value" style={{ color: cpuColor }} title={formatCpu(total.cpu_percent)}>
+            {formatCpu(total.cpu_percent)}
+          </strong>
           <svg className="sys-sparkline" width="42" height="12" viewBox="0 0 42 12" aria-hidden="true">
             <polyline
               fill="none"
@@ -88,35 +115,38 @@ export function SystemResourceRow({
           </svg>
         </div>
         <div className="sys-metrics-right">
-          <span className="sys-badge">
-            <span className="sys-label">RAM</span>
-            <strong>{formatBytes(total.memory_bytes)}</strong>
-          </span>
-          {hasTasks && (
-            <span className="sys-sub-metrics">
-              ({formatBytes(app.memory_bytes)} + {formatBytes(tasks.memory_bytes)})
-            </span>
-          )}
+          <ResourceIcon kind="ram" />
+          <span className="sys-label">RAM</span>
+          <strong className="sys-value" title={formatBytes(total.memory_bytes)}>
+            {formatBytes(total.memory_bytes)}
+          </strong>
         </div>
       </div>
 
-      {/* Hover / 点击原位切出的明细视态：彻底避免弹窗遮挡或被窗口边缘裁剪 */}
-      <div className="sys-view-detail" aria-hidden={!showDetail}>
+      <div className="sys-view-detail">
         <div className="sys-detail-col">
-          <span className="sys-dot app-dot" />
-          <span className="sys-col-name">桌面端</span>
-          <span className="sys-col-val">
-            {formatCpu(app.cpu_percent)} · {formatBytes(app.memory_bytes)}
+          <ResourceIcon kind="desktop" />
+          <span className="sys-col-name">Desktop</span>
+          <span className="sys-col-val" title={`${formatCpu(app.cpu_percent)} · ${formatBytes(app.memory_bytes)}`}>
+            <span className="sys-detail-cpu">{formatCpu(app.cpu_percent)}</span>
+            <span className="sys-separator" aria-hidden="true">
+              ·
+            </span>
+            <span className="sys-detail-memory">{formatBytes(app.memory_bytes)}</span>
           </span>
         </div>
         <div className="sys-detail-col">
-          <span className={`sys-dot ${hasTasks ? "task-dot active" : "task-dot"}`} />
-          <span className="sys-col-name">任务/CLI</span>
-          <span className="sys-col-val">
-            {formatCpu(tasks.cpu_percent)} · {formatBytes(tasks.memory_bytes)}
+          <ResourceIcon kind="tasks" />
+          <span className="sys-col-name">Tasks/CLI</span>
+          <span className="sys-col-val" title={`${formatCpu(tasks.cpu_percent)} · ${formatBytes(tasks.memory_bytes)}`}>
+            <span className="sys-detail-cpu">{formatCpu(tasks.cpu_percent)}</span>
+            <span className="sys-separator" aria-hidden="true">
+              ·
+            </span>
+            <span className="sys-detail-memory">{formatBytes(tasks.memory_bytes)}</span>
           </span>
         </div>
       </div>
-    </div>
+    </GlassContainer>
   );
 }

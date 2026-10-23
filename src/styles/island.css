@@ -1,0 +1,50 @@
+.island {
+  flex: none;
+  width: var(--minimal-width);
+  height: 36px;
+  border: 0;
+  border-radius: var(--radius-minimal);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  transition:
+    width var(--morph-duration) var(--morph-ease),
+    height var(--morph-duration) var(--morph-ease),
+    border-radius var(--morph-duration) var(--morph-ease);
+}
+
+.island:active {
+  cursor: grabbing;
+}
+
+.island:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.island.layout-single,
+.island.layout-multi {
+  width: var(--adaptive-compact-width, var(--compact-width));
+  height: 38px;
+  border-radius: var(--radius-compact);
+}
+
+.island.expanded {
+  cursor: pointer;
+  width: var(--expanded-width);
+  border-radius: var(--radius-expanded);
+}
+
+.island-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .island {
+    transition-duration: 150ms;
+    transition-delay: 0ms;
+    transition-timing-function: ease;
+  }
+}

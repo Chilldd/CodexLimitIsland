@@ -37,12 +37,12 @@ test("multiple tasks render their own Hook models, including completed results",
   }
   const unknown = screen.getByRole("button", { name: /Unknown Model/ });
   expect(unknown.querySelector(".session-model")).toBeNull();
-  expect(within(unknown).getByText("正在思考…")).toBeTruthy();
+  expect(within(unknown).getByText("Thinking...")).toBeTruthy();
 });
 
 test("models stay attached to the selected task across single and multi layouts", () => {
   const session = { ...active(), model: "gpt-6-sol" };
-  const result = { ...done(), model: "gpt-6-astra" };
+  const result = { ...done(), sessionId: "completed-session", model: "gpt-6-astra" };
   const single = deriveIslandPresentation(snapshot([session]), null, {}, 20_000);
   expect(single.meta?.label).toBe("gpt-6-sol");
   expect(single.rows[0]).toMatchObject({ model: "gpt-6-sol" });

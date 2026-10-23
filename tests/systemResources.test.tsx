@@ -11,11 +11,13 @@ test("renders empty resource metrics gracefully", () => {
   expect(screen.getAllByText("0 MB").length).toBeGreaterThanOrEqual(1);
   const polyline = container.querySelector("polyline");
   expect(polyline).toBeTruthy();
-  expect(screen.getByText("桌面端")).toBeTruthy();
-  expect(screen.getByText("任务/CLI")).toBeTruthy();
+  expect(screen.getByText("Desktop")).toBeTruthy();
+  expect(screen.getByText("Tasks/CLI")).toBeTruthy();
+  expect(container.querySelectorAll(".sys-icon")).toHaveLength(4);
+  expect(container.querySelector(".sys-dot")).toBeNull();
 });
 
-test("renders aggregated metrics and toggles in-place detail view on hover and click", () => {
+test("renders summary and detail together without hover or click switching", () => {
   const snapshot: SystemResourceSnapshot = {
     total: {
       cpu_percent: 24.5,
@@ -37,24 +39,25 @@ test("renders aggregated metrics and toggles in-place detail view on hover and c
 
   expect(screen.getByText("25%")).toBeTruthy();
   expect(screen.getByText("800 MB")).toBeTruthy();
-  expect(screen.getByText("(600 MB + 200 MB)")).toBeTruthy();
+  expect(screen.queryByText("(600 MB + 200 MB)")).toBeNull();
+  expect(screen.getByTitle("Codex total: Desktop + Tasks/CLI")).toBeTruthy();
 
   const row = container.querySelector(".system-resource-row");
   expect(row).toBeTruthy();
   expect(row?.classList.contains("showing-detail")).toBe(false);
 
-  // Hover 进入原位明细视图，绝不弹窗遮挡
+  const before = row!.innerHTML;
+  expect(container.querySelector(".sys-view-detail")?.getAttribute("aria-hidden")).not.toBe("true");
   fireEvent.mouseEnter(row!);
-  expect(row?.classList.contains("showing-detail")).toBe(true);
-  expect(screen.getByText("4.5% · 600 MB")).toBeTruthy();
-  expect(screen.getByText("20% · 200 MB")).toBeTruthy();
+  expect(screen.getByText("4.5%")).toBeTruthy();
+  expect(screen.getByText("600 MB")).toBeTruthy();
+  expect(screen.getByText("20%")).toBeTruthy();
+  expect(screen.getByText("200 MB")).toBeTruthy();
 
   fireEvent.mouseLeave(row!);
-  expect(row?.classList.contains("showing-detail")).toBe(false);
-
-  // 点击可锁定切换
   fireEvent.click(row!);
-  expect(row?.classList.contains("showing-detail")).toBe(true);
+  expect(row?.classList.contains("showing-detail")).toBe(false);
+  expect(row!.innerHTML).toBe(before);
 
   const polyline = container.querySelector("polyline");
   expect(polyline?.getAttribute("points")).toBeTruthy();

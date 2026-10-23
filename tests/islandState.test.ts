@@ -73,14 +73,14 @@ test("layout follows active sessions without frontend stale filtering", () => {
   assert.equal(derive([session("s")]).layout, "single");
   assert.equal(derive([session("s"), session("b")]).layout, "multi");
   assert.equal(derive([session("s", "executing")], [], null, {}, now + 11 * 60_000).layout, "single");
-  assert.equal(derive([session("s")]).compactLabel, "思考中");
-  assert.equal(derive([session("s", "compacting")]).expandedTitle, "正在压缩上下文…");
+  assert.equal(derive([session("s")]).compactLabel, "Thinking...");
+  assert.equal(derive([session("s", "compacting")]).expandedTitle, "Compacting context...");
 });
 test("permission retains layout and wins over quota", () => {
   const view = derive([session("s", "thinking", "permission"), session("b")], [], usage(0));
   assert.equal(view.layout, "multi");
   assert.equal(view.attention, "permission");
-  assert.equal(view.compactLabel, "等待审批");
+  assert.equal(view.compactLabel, "Approval needed");
   assert.equal(derive([], [], usage(0)).attention, "quota");
 });
 test("agent permission selects the correct session and row attention", () => {
@@ -90,7 +90,7 @@ test("agent permission selects the correct session and row attention", () => {
   assert.equal(view.primarySession?.id, "WaitingProject");
   assert.equal(view.attention, "permission");
   assert.equal(effectiveAttention(waiting), "permission");
-  assert.equal(sessionLabel(waiting), "等待审批");
+  assert.equal(sessionLabel(waiting), "Approval needed");
   assert.equal(view.sessions[0].id, "WaitingProject");
 });
 test("one active and one completed keep both rows and token", () => {
@@ -98,9 +98,9 @@ test("one active and one completed keep both rows and token", () => {
   const ready: TokenUsageState = { status: "ready", taskTokens: 12_648, sessionTokens: 20_000, readyAt: now };
   const view = derive([session("active")], [done], null, { [resultKey(done)]: ready });
   assert.equal(view.layout, "multi");
-  assert.equal(view.compactLabel, "1 运行 · 1 完成");
+  assert.equal(view.compactLabel, "1 running · 1 completed");
   assert.equal(view.rowCount, 2);
-  assert.equal(view.visibleResults[0].label, "任务完成 · 12,648 tokens");
+  assert.equal(view.visibleResults[0].label, "Completed · 12,648 tokens");
   assert.equal(view.visibleResults[0].token, ready);
 });
 test("multiple active and results have stable explicit order", () => {
@@ -109,7 +109,7 @@ test("multiple active and results have stable explicit order", () => {
   const view = derive([session("b", "thinking", "none", [], now - 10), session("a", "editing")], [old, recent]);
   assert.equal(view.layout, "multi");
   assert.equal(view.rowCount, 4);
-  assert.equal(view.compactLabel, "2 运行 · 2 完成");
+  assert.equal(view.compactLabel, "2 running · 2 completed");
   assert.deepEqual(
     view.sessions.map((item) => item.id),
     ["a", "b"],
@@ -125,23 +125,26 @@ test("two completed results and active interrupted result stay visible", () => {
   assert.equal(derive([], [a, b]).visibleResults.length, 2);
   const interrupted = result("interrupted");
   const view = derive([session("active")], [interrupted]);
-  assert.equal(view.visibleResults[0].label, "任务已中断");
+  assert.equal(view.visibleResults[0].label, "Task interrupted");
   assert.equal(view.rowCount, 2);
 });
 test("completed context and token loading states", () => {
   const done = result();
   const key = resultKey(done);
   const loading = derive([], [done], null, { [key]: { status: "loading" } });
-  assert.equal(loading.compactLabel, "完成");
+  assert.equal(loading.compactLabel, "Completed");
   assert.equal(loading.primaryResult?.result.project, "s");
   assert.equal(loading.primaryResult?.result.model, "sol");
   assert.equal(loading.primaryResult?.result.startedAt, now - 900);
-  assert.equal(derive([], [done], null, { [key]: { status: "unavailable" } }).compactLabel, "完成");
+  assert.equal(derive([], [done], null, { [key]: { status: "unavailable" } }).compactLabel, "Completed");
   const ready: TokenUsageState = { status: "ready", taskTokens: 12_600, sessionTokens: 20_000, readyAt: now };
-  assert.equal(derive([], [done], null, { [key]: ready }).compactLabel, "完成 · 12.6k");
+  assert.equal(derive([], [done], null, { [key]: ready }).compactLabel, "Completed · 12.6k");
   assert.equal(derive([], [done], null, { [key]: ready }).showTokenSummary, true);
-  assert.equal(derive([], [done], null, { [key]: { ...ready, taskTokens: 368_420 } }).compactLabel, "完成 · 368k");
-  assert.equal(derive([], [done], null, { [key]: { ...ready, taskTokens: 3_640_000 } }).compactLabel, "完成 · 3.6M");
+  assert.equal(derive([], [done], null, { [key]: { ...ready, taskTokens: 368_420 } }).compactLabel, "Completed · 368k");
+  assert.equal(
+    derive([], [done], null, { [key]: { ...ready, taskTokens: 3_640_000 } }).compactLabel,
+    "Completed · 3.6M",
+  );
 });
 test("normal and token ready result expiry use one-shot deadlines", () => {
   const done = result();
@@ -233,12 +236,12 @@ test("limitWindow option toggles compactUsage between 5h and week", () => {
   const view5h = derive([], [], usageSnapshot, {}, now, []);
   assert.equal(view5h.compactUsage.label, "5h");
   assert.equal(view5h.compactUsage.percent, "45%");
-  assert.equal(view5h.ariaLabel, "Codex 五小时剩余额度 45%");
+  assert.equal(view5h.ariaLabel, "Codex 5-hour remaining 45%");
 
   const viewWeek = deriveIslandPresentation(snapshot(), usageSnapshot, {}, now, [], false, "week");
   assert.equal(viewWeek.compactUsage.label, "7d");
   assert.equal(viewWeek.compactUsage.percent, "88%");
-  assert.equal(viewWeek.ariaLabel, "Codex 每周剩余额度 88%");
+  assert.equal(viewWeek.ariaLabel, "Codex weekly remaining 88%");
 
   const proUsage: UsageSnapshot = {
     fiveHour: null,

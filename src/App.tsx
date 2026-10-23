@@ -17,7 +17,6 @@ import { nativeWindow, type IslandNativeWindow } from "./nativeWindow";
 import { Island } from "./components/Island";
 import { DebugSwitcher } from "./components/DebugSwitcher";
 import "./App.css";
-import "./styles/states.css";
 
 import { type TurnResult } from "./islandState";
 
@@ -59,7 +58,7 @@ function App({ native = nativeWindow }: { native?: IslandNativeWindow }) {
       ? fallbackCompact.width - ROOT_PADDING * 2
       : (adaptiveWidth ?? fallbackCompact.width - ROOT_PADDING * 2);
 
-  const height = expandedHeight(view.rowCount, view.showTokenSummary);
+  const height = expandedHeight(view.rows.length);
   const { controller, orbTransitioning } = useIslandWindow(native, machine, {
     compact: {
       width: compactIslandWidth + ROOT_PADDING * 2,
