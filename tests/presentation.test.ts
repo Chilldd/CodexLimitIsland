@@ -167,11 +167,11 @@ test("CSS tokens, visible size, native hit regions and Tauri/Rust bounds stay al
   expect(appCss).toMatch(/width:\s*var\(--expanded-width\)/);
   expect(appCss).toMatch(/height:\s*var\(--session-row-height\)/);
   for (const width of [MINIMAL_WIDTH, COMPACT_WIDTH, EXPANDED_WIDTH]) expect(appCss).not.toContain(`width: ${width}px`);
-  expect(expandedHeight(0)).toBe(316);
-  expect(expandedHeight(1)).toBe(316);
-  expect(expandedHeight(2)).toBe(376);
-  expect(expandedHeight(3)).toBe(436);
-  expect(expandedHeight(9)).toBe(436);
+  expect(expandedHeight(0)).toBe(306);
+  expect(expandedHeight(1)).toBe(306);
+  expect(expandedHeight(2)).toBe(356);
+  expect(expandedHeight(3)).toBe(406);
+  expect(expandedHeight(9)).toBe(406);
   expect(expandedHeight(9)).toBeLessThanOrEqual(EXPANDED_MAX_HEIGHT);
   const config = JSON.parse(readFileSync(resolve("src-tauri/tauri.conf.json"), "utf8"));
   expect(config.app.windows[0]).toMatchObject({ width: WINDOW_WIDTH, height: compactSize("single").height });

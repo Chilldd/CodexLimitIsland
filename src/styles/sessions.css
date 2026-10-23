@@ -59,6 +59,7 @@
   border-radius: 50%;
   background: var(--dot-active);
   flex: none;
+  align-self: center;
 }
 
 .session-dot[data-attention="permission"] {
@@ -78,7 +79,21 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 5px;
+}
+
+.session-primary,
+.session-secondary,
+.session-primary-left {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  min-width: 0;
+  gap: 8px;
+}
+
+.session-primary-left {
+  flex: 1;
 }
 
 .session-text strong,
@@ -89,49 +104,63 @@
 }
 
 .session-text strong {
-  font-size: var(--font-md);
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 42%;
+  color: var(--text-primary);
+  font-size: var(--font-sm);
   line-height: var(--leading-tight);
-  font-weight: 550;
+  font-weight: 600;
 }
 
 .session-text small {
-  color: var(--text-3);
+  flex: 1;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-weight: 500;
   font-size: var(--font-xs);
   line-height: 14px;
 }
 
 .session-row time {
+  flex-shrink: 0;
   font-size: var(--font-xs);
-  line-height: var(--leading-tight);
-  color: var(--text-3);
+  line-height: 14px;
+  color: var(--text-secondary);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   min-width: 4ch;
   text-align: right;
 }
 
-.session-meta {
-  min-width: 0;
-  max-width: 34%;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  flex-shrink: 0;
-  color: var(--text-3);
-  font-size: var(--font-xs);
-  line-height: var(--leading-tight);
+.session-secondary {
+  justify-content: space-between;
+  /* 与首行名称共用起点，指示灯只占首行的 7px + 8px 间距。 */
+  padding-left: 15px;
 }
 
 .session-tokens {
   display: flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
   gap: 10px;
-  color: var(--text-muted);
-  font-size: 9px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 400;
   line-height: 14px;
   white-space: nowrap;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.session-secondary:has(.session-model) .session-tokens {
+  /* 保留模型间距；仅在 Token 本身已放不下时才压缩统计项。 */
+  max-width: calc(100% - 8px);
 }
 
 .session-tokens > span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -147,7 +176,14 @@
 }
 
 .session-model {
-  max-width: 100%;
+  /* 模型先让出宽度，极窄时 Token 内的两项仍可分别截断。 */
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 14px;
+  text-align: right;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -161,7 +197,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--text-2);
+  color: var(--text-primary);
   text-align: left;
   cursor: pointer;
   border-radius: 3px;
@@ -198,30 +234,8 @@
   color: var(--accent);
 }
 
-.session-open-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 12px;
-  height: 12px;
-  color: var(--text-3);
-  opacity: 0;
-  transition:
-    opacity 0.16s ease,
-    color 0.16s ease;
-}
-
-.session-open-icon svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.session-row:hover:not(:disabled) .session-open-icon,
-.session-row:focus-visible .session-open-icon {
-  opacity: 1;
-  color: var(--accent);
+.session-link:hover:not(:disabled) strong {
+  color: var(--text-accent);
 }
 
 @media (prefers-reduced-motion: reduce) {

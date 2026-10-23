@@ -68,7 +68,7 @@
   color: var(--accent);
 }
 .sys-label {
-  color: var(--monitor-label);
+  color: var(--text-tertiary);
   font-size: 10px;
   font-weight: 500;
 }
@@ -79,7 +79,8 @@
   line-height: 16px;
 }
 .sys-value {
-  color: var(--monitor-value);
+  color: var(--text-primary);
+  font-weight: 600;
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -103,14 +104,15 @@
   min-width: 0;
 }
 .sys-col-name {
-  color: var(--monitor-label);
+  color: var(--text-tertiary);
+  font-weight: 500;
 }
 .sys-col-val {
   display: grid;
   grid-template-columns: 6.5ch 6px minmax(0, 1fr);
   gap: 2px;
   min-width: 0;
-  color: var(--monitor-value);
+  color: var(--text-secondary);
 }
 .sys-detail-cpu,
 .sys-detail-memory {
@@ -123,7 +125,7 @@
   text-align: left;
 }
 .sys-separator {
-  color: var(--monitor-secondary);
+  color: var(--text-muted);
   text-align: center;
 }
 @media (prefers-reduced-motion: reduce) {

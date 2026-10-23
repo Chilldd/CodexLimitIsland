@@ -26,13 +26,14 @@
 }
 
 .minimal-copy span {
-  color: var(--text-3);
+  color: var(--text-secondary);
   font-size: var(--font-xs);
   font-weight: 500;
   line-height: var(--leading-tight);
 }
 
 .minimal-copy strong {
+  color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   min-width: 0;
   font-size: var(--font-sm);
@@ -81,13 +82,13 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text-2);
-  font-weight: 550;
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .activity-sub {
   flex: none;
-  color: var(--text-2);
+  color: var(--text-secondary);
   font-size: var(--font-xs);
   font-variant-numeric: tabular-nums;
 }
@@ -101,12 +102,13 @@
 }
 
 .compact-limit > span {
-  color: var(--text-3);
+  color: var(--text-secondary);
   font-size: var(--font-xs);
   font-weight: 500;
 }
 
 .compact-limit strong {
+  color: var(--text-primary);
   text-align: left;
   font-variant-numeric: tabular-nums;
   font-size: var(--font-sm);

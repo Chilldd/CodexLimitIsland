@@ -77,7 +77,7 @@ Run the installer and follow the setup wizard.
 
 Configuring Codex command-style Hooks enables real-time activity status, lifecycle tracking, and Token metrics in the island.
 
-- **One-Click Configuration (Recommended)**: Right-click the system tray icon and select **"Configure Codex Hook…"** (`配置 Codex Hook…`). The app will safely merge the current executable's hook rules into `%USERPROFILE%\.codex\hooks.json` while preserving any existing third-party hooks. Afterward, fully exit and restart the Codex App and approve the hook in the review prompt.
+- **One-Click Configuration (Recommended)**: Right-click the system tray icon and select **"Configure Codex Hook…"** (`配置 Codex Hook…`). The app merges the current executable's hook rules into `%USERPROFILE%\.codex\hooks.json` (or your custom `CODEX_HOME` directory), updates its existing commands, and preserves third-party hooks. Afterward, fully exit and restart the Codex App and approve the hook in the review prompt.
 - **Manual Configuration**:
 
 1. Open or create `%USERPROFILE%\.codex\hooks.json` (or under your custom `CODEX_HOME` directory).
@@ -92,13 +92,23 @@ If `codexlimit.exe` is added to your `PATH`:
 }
 ```
 
-If not in `PATH`, use the absolute path enclosed in quotes. For example, if installed in `C:\Program Files\Codex Limit Island\codexlimit.exe`:
+If not in `PATH`, use the actual absolute path. A simple path can be written directly:
 
 ```json
 {
-  "command": "\"C:\\Program Files\\Codex Limit Island\\codexlimit.exe\" --hook"
+  "command": "D:\\Apps\\CodexLimit\\codexlimit.exe --hook"
 }
 ```
+
+On Windows, paths containing spaces or special characters require PowerShell's call operator `&` and single quotes. For example, if installed in `C:\Program Files\Codex Limit Island\codexlimit.exe`:
+
+```json
+{
+  "command": "& 'C:\\Program Files\\Codex Limit Island\\codexlimit.exe' --hook"
+}
+```
+
+Keep the handler's `type` and `timeout` fields from the full example. Escape JSON path backslashes as `\\` and double any single quote inside the PowerShell path: `O'Brien` becomes `O''Brien`. A double-quoted path followed directly by `--hook` causes a PowerShell syntax error. Use your actual installation directory; the installer does not configure Hooks automatically.
 
 4. Save the file and restart Codex App. Review and trust the configuration in the Hook Review interface (or execute `/hooks` in Codex CLI). Modified hooks require re-approval before execution. See [Codex Official Hook Documentation](https://learn.chatgpt.com/docs/hooks).
 5. Send a prompt in Codex to verify that the island transitions to active state and displays turn results upon completion.

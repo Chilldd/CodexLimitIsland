@@ -100,7 +100,7 @@ export function SystemResourceRow({
         <div className="sys-metrics-left">
           <ResourceIcon kind="cpu" />
           <span className="sys-label">CPU</span>
-          <strong className="sys-value" style={{ color: cpuColor }} title={formatCpu(total.cpu_percent)}>
+          <strong className="sys-value" title={formatCpu(total.cpu_percent)}>
             {formatCpu(total.cpu_percent)}
           </strong>
           <svg className="sys-sparkline" width="42" height="12" viewBox="0 0 42 12" aria-hidden="true">

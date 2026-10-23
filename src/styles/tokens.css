@@ -1,6 +1,6 @@
 :root {
   font-family: Inter, "Segoe UI Variable", "Segoe UI", "Microsoft YaHei", sans-serif;
-  color: var(--text-1);
+  color: var(--text-primary);
   background: transparent;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
@@ -16,7 +16,7 @@
   --compact-multi-width: 172px;
   --expanded-width: 380px;
   --expanded-max-height: 440px;
-  --session-row-height: 60px;
+  --session-row-height: 50px;
 
   /* 底部卡片与监控栏共用定位基准，内容区只占用其上方空间。 */
   --panel-inset: 16px;
@@ -50,16 +50,16 @@
   --scrollbar: #39434f;
   --shadow-contact: rgba(0, 0, 0, 0.24);
 
-  /* 深空灰阶：常规内容与辅助信息通过明度区分。 */
-  --text-1: #e9ecf1;
-  --text-2: #d2d8df;
-  --text-3: #a2acb9;
-  --text-secondary: #b3bdc9;
-  --text-muted: #909caa;
-  --quota-value: #e3e7ed;
+  /* 深空文字层级：使用不透明色，避免背景混合降低可读性。 */
+  --text-primary: #f2f6fa;
+  --text-secondary: #c9d3dc;
+  --text-tertiary: #92a0ad;
+  --text-muted: #82919e;
+  --text-accent: #9bcad4;
+
+  /* 监控图标与趋势图保留原有配色，不参与文字层级。 */
   --monitor-label: #a0adbc;
   --monitor-value: #c6d2de;
-  --monitor-secondary: #a4b1bf;
   --monitor-app: #7a99af;
 
   /* 单色强调与额度语义色 */

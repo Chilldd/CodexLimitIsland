@@ -77,7 +77,7 @@
 
 通过配置 Codex 命令型 Hook，灵动岛可以在后台实时感知 Codex 的运行状态、进度及 Token 消耗。
 
-- **一键配置（推荐）**：右键点击系统托盘图标，选择 **“配置 Codex Hook…”**，程序会自动将当前可执行文件的 Hook 规则安全合并到 `%USERPROFILE%\.codex\hooks.json`（保留已有的其他第三方 Hook）。写入成功后，完全退出并重启 Codex App，在审查界面确认信任即可。
+- **一键配置（推荐）**：右键点击系统托盘图标，选择 **“配置 Codex Hook…”**，程序会自动将当前可执行文件的 Hook 规则合并到 `%USERPROFILE%\.codex\hooks.json`（设置了 `CODEX_HOME` 时写入该目录），更新本程序已有的命令并保留其他第三方 Hook。写入成功后，完全退出并重启 Codex App，在审查界面确认信任即可。
 - **手动配置**：
 
 1. 打开或创建当前用户的 `%USERPROFILE%\.codex\hooks.json`。使用自定义 `CODEX_HOME` 时，将文件放在该目录下。
@@ -92,15 +92,23 @@
 }
 ```
 
-若未加入 `PATH`，填写安装后的实际路径，并用双引号包住可执行文件路径。例如安装位置为 `C:\Program Files\Codex Limit Island\codexlimit.exe` 时，字段应写为：
+若未加入 `PATH`，填写安装后的实际路径。普通路径可直接写为：
 
 ```json
 {
-  "command": "\"C:\\Program Files\\Codex Limit Island\\codexlimit.exe\" --hook"
+  "command": "D:\\Apps\\CodexLimit\\codexlimit.exe --hook"
 }
 ```
 
-以上仅展示 `command` 字段，完整 handler 仍需保留示例中的 `type` 和 `timeout`。JSON 中路径反斜杠写为 `\\`，命令内部双引号写为 `\"`。示例安装目录仅作说明，请以实际安装位置为准；安装程序不会自动配置 Hook。
+Windows 下路径含空格或特殊字符时，使用 PowerShell 调用运算符 `&` 和单引号。例如安装位置为 `C:\Program Files\Codex Limit Island\codexlimit.exe` 时，字段应写为：
+
+```json
+{
+  "command": "& 'C:\\Program Files\\Codex Limit Island\\codexlimit.exe' --hook"
+}
+```
+
+以上仅展示 `command` 字段，完整 handler 仍需保留示例中的 `type` 和 `timeout`。JSON 中路径反斜杠写为 `\\`；PowerShell 单引号路径中的单引号需写成两个单引号，例如 `O'Brien` 写成 `O''Brien`。不要只给路径加双引号后直接接 `--hook`，该写法会导致 PowerShell 语法错误。示例安装目录仅作说明，请以实际安装位置为准；安装程序不会自动配置 Hook。
 
 4. 保存后重启 Codex App，在 Hook 审查界面检查并信任当前配置。CLI 用户可使用 `/hooks` 查看和信任 Hook。新增或修改命令后需重新审查，未信任的 Hook 不会执行。详见 [Codex 官方 Hook 文档](https://learn.chatgpt.com/docs/hooks)。
 5. 发送一条新消息，确认灵动岛进入运行状态，任务完成后显示结果。若只有额度而没有会话活动，先检查 Hook 命令路径、信任状态与本地端口 `17321` 是否被占用。
