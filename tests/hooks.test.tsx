@@ -307,23 +307,25 @@ test("horizontal drag preserves DPI threshold, 0.38 smoothing, pointer capture a
   const native = nativeFixture();
   const hook = renderHook(() => useHorizontalDrag(native, () => true, false));
   const element = document.createElement("main");
-  const pointer = (screenX: number) =>
-    ({ button: 0, pointerId: 1, screenX, currentTarget: element }) as unknown as PointerEvent<HTMLElement>;
+  const pointer = (screenX: number) => {
+    native.cursorPosition.mockResolvedValue({ x: 220 + (screenX - 10) * 2, y: 20 });
+    return { button: 0, pointerId: 1, screenX, currentTarget: element } as unknown as PointerEvent<HTMLElement>;
+  };
   await act(() => hook.result.current.onPointerDown(pointer(10)));
   expect(element.setPointerCapture).toHaveBeenCalledWith(1);
-  act(() => hook.result.current.onPointerMove(pointer(14)));
+  await act(() => hook.result.current.onPointerMove(pointer(14)));
   await act(() => vi.advanceTimersByTimeAsync(16));
   expect(native.setPosition).not.toHaveBeenCalled();
-  act(() => hook.result.current.onPointerMove(pointer(30)));
+  await act(() => hook.result.current.onPointerMove(pointer(30)));
   await act(() => vi.advanceTimersByTimeAsync(16));
-  expect(native.setPosition).toHaveBeenLastCalledWith(215, 3);
-  act(() => hook.result.current.onPointerMove(pointer(1000)));
+  expect(native.setPosition).toHaveBeenLastCalledWith(215, 6);
+  await act(() => hook.result.current.onPointerMove(pointer(1000)));
   await act(() => vi.advanceTimersByTimeAsync(1000));
-  expect(native.setPosition).toHaveBeenLastCalledWith(320, 3);
-  act(() => hook.result.current.onPointerMove(pointer(-1000)));
+  expect(native.setPosition).toHaveBeenLastCalledWith(320, 6);
+  await act(() => hook.result.current.onPointerMove(pointer(-1000)));
   await act(() => vi.advanceTimersByTimeAsync(1000));
-  expect(native.setPosition).toHaveBeenLastCalledWith(100, 3);
-  act(() => hook.result.current.onPointerUp(pointer(1000)));
+  expect(native.setPosition).toHaveBeenLastCalledWith(100, 6);
+  await act(() => hook.result.current.onPointerUp(pointer(1000)));
   expect(element.releasePointerCapture).toHaveBeenCalledWith(1);
   expect(hook.result.current.suppressClick()).toBe(true);
   expect(hook.result.current.suppressClick()).toBe(false);
@@ -460,7 +462,9 @@ test("drag position preparation finishing after unmount cannot schedule native m
   hook.unmount();
   pending.resolve({
     position: { x: 200, y: 3 },
-    monitor: { position: { x: 0, y: 0 }, size: { width: 1000, height: 800 } },
+    monitor: { position: { x: 0, y: 0 }, size: { width: 1000, height: 800 }, scaleFactor: 1 },
+    monitors: [{ position: { x: 0, y: 0 }, size: { width: 1000, height: 800 }, scaleFactor: 1 }],
+    cursor: { x: 220, y: 20 },
     scale: 1,
   });
   await preparation;
@@ -481,13 +485,14 @@ test("pointerUp saves position when dragged beyond threshold, but skips saving i
     currentTarget: element,
   } as unknown as PointerEvent<HTMLElement>);
 
-  hook.result.current.onPointerMove({
+  native.cursorPosition.mockResolvedValue({ x: 222, y: 20 });
+  await hook.result.current.onPointerMove({
     pointerId: 1,
     screenX: 101, // delta = (101 - 100) * 2 = 2 < 10 (5 * 2)
     currentTarget: element,
   } as unknown as PointerEvent<HTMLElement>);
 
-  hook.result.current.onPointerUp({
+  await hook.result.current.onPointerUp({
     pointerId: 1,
     currentTarget: element,
   } as unknown as PointerEvent<HTMLElement>);
@@ -502,20 +507,95 @@ test("pointerUp saves position when dragged beyond threshold, but skips saving i
     currentTarget: element,
   } as unknown as PointerEvent<HTMLElement>);
 
-  hook.result.current.onPointerMove({
+  native.cursorPosition.mockResolvedValue({ x: 320, y: 20 });
+  await hook.result.current.onPointerMove({
     pointerId: 2,
     screenX: 150, // delta = (150 - 100) * 2 = 100 >= 10
     currentTarget: element,
   } as unknown as PointerEvent<HTMLElement>);
 
-  hook.result.current.onPointerUp({
+  await hook.result.current.onPointerUp({
     pointerId: 2,
     currentTarget: element,
   } as unknown as PointerEvent<HTMLElement>);
 
   expect(native.savePosition).toHaveBeenCalledTimes(1);
   // initial position.x = 200, delta = 100 -> target = 300
-  expect(native.savePosition).toHaveBeenCalledWith(300);
+  expect(native.savePosition).toHaveBeenCalledWith(300, 6);
+});
+
+test.each([
+  { origin: { x: 1920, y: 240 }, scale: 2, cursor: { x: 2400, y: 260 }, target: { x: 2000, y: 246 } },
+  { origin: { x: -2560, y: -120 }, scale: 1.25, cursor: { x: -800, y: -100 }, target: { x: -1050, y: -116 } },
+])(
+  "drag crosses to a secondary monitor at $origin with scale $scale and returns",
+  async ({ origin, scale, cursor, target }) => {
+    const native = nativeFixture();
+    const primary = { position: { x: 0, y: 0 }, size: { width: 1920, height: 1080 }, scaleFactor: 1 };
+    const secondary = { position: origin, size: { width: 2560, height: 1440 }, scaleFactor: scale };
+    native.placement.mockResolvedValue({
+      position: { x: 700, y: 3 },
+      monitor: primary,
+      monitors: [primary, secondary],
+      cursor: { x: 900, y: 20 },
+      scale: 1,
+    });
+    const hook = renderHook(() => useHorizontalDrag(native, () => true, false));
+    const element = document.createElement("main");
+    const event = {
+      button: 0,
+      pointerId: 1,
+      screenX: 900,
+      currentTarget: element,
+    } as unknown as PointerEvent<HTMLElement>;
+    await act(() => hook.result.current.onPointerDown(event));
+    native.cursorPosition.mockResolvedValue(cursor);
+    await act(() => hook.result.current.onPointerMove(event));
+    await act(() => vi.advanceTimersByTimeAsync(16));
+    expect(native.setPosition).toHaveBeenLastCalledWith(target.x, target.y);
+    native.cursorPosition.mockResolvedValue({ x: 900, y: 20 });
+    await act(() => hook.result.current.onPointerMove(event));
+    await act(() => vi.advanceTimersByTimeAsync(16));
+    expect(native.setPosition).toHaveBeenLastCalledWith(700, 3);
+    native.cursorPosition.mockResolvedValue(cursor);
+    await act(() => hook.result.current.onPointerUp(event));
+    expect(native.savePosition).toHaveBeenLastCalledWith(target.x, target.y);
+    expect(native.setPosition).toHaveBeenLastCalledWith(target.x, target.y);
+    hook.unmount();
+  },
+);
+
+test("drag coalesces slow cursor reads and discards results after unmount", async () => {
+  const native = nativeFixture();
+  const pending = deferred<{ x: number; y: number }>();
+  native.cursorPosition.mockReturnValueOnce(pending.promise).mockResolvedValue({ x: 300, y: 20 });
+  const hook = renderHook(() => useHorizontalDrag(native, () => true, true));
+  const element = document.createElement("main");
+  const event = {
+    button: 0,
+    pointerId: 1,
+    screenX: 10,
+    currentTarget: element,
+  } as unknown as PointerEvent<HTMLElement>;
+  await act(() => hook.result.current.onPointerDown(event));
+  const reading = hook.result.current.onPointerMove(event);
+  void hook.result.current.onPointerMove(event);
+  void hook.result.current.onPointerMove(event);
+  expect(native.cursorPosition).toHaveBeenCalledTimes(1);
+  pending.resolve({ x: 240, y: 20 });
+  await act(() => reading);
+  expect(native.cursorPosition).toHaveBeenCalledTimes(2);
+  await act(() => vi.advanceTimersByTimeAsync(16));
+  expect(native.setPosition).toHaveBeenLastCalledWith(280, 6);
+  const late = deferred<{ x: number; y: number }>();
+  native.cursorPosition.mockReturnValueOnce(late.promise);
+  const trailing = hook.result.current.onPointerMove(event);
+  hook.unmount();
+  late.resolve({ x: 1000, y: 20 });
+  await trailing;
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(native.setPosition).toHaveBeenCalledTimes(1);
+  expect(native.savePosition).not.toHaveBeenCalled();
 });
 
 test("useLimitWindow reads initial preference and updates upon limit-window-changed event", async () => {

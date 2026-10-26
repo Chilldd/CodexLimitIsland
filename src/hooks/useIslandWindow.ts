@@ -22,7 +22,20 @@ export function useIslandWindow(
   }, [controller, model]);
   useEffect(() => {
     controller.activate();
-    return () => controller.dispose();
-  }, [controller]);
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void native
+      .onScaleChanged?.(() => void controller.refreshScale())
+      .then((remove) => {
+        if (disposed) remove();
+        else unlisten = remove;
+      })
+      .catch((error) => console.error("监听屏幕缩放变化失败", error));
+    return () => {
+      disposed = true;
+      unlisten?.();
+      controller.dispose();
+    };
+  }, [controller, native]);
   return { controller, orbTransitioning };
 }

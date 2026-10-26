@@ -1,3 +1,4 @@
+import type { SystemResourceSnapshot } from "./generated/contracts";
 import {
   resultKey,
   type Activity,
@@ -8,6 +9,8 @@ import {
   type TurnResult,
   type UsageSnapshot,
 } from "./islandState";
+
+export const FIXED_DEBUG_NOW = 1_761_206_400_000;
 
 export const DEBUG_SCENARIOS = [
   "Idle",
@@ -36,7 +39,113 @@ export type DebugScenario = {
   snapshot: ActivitySnapshot;
   usage: UsageSnapshot;
   tokens: Record<string, TokenUsageState>;
+  systemSnapshot: SystemResourceSnapshot;
+  cpuHistory: number[];
 };
+
+export type ReadmeTarget = {
+  id: "compact-pill" | "expanded-completed" | "expanded-thinking" | "expanded-multi";
+  fileName: string;
+  title: string;
+  scenario: DebugScenarioName;
+  expanded: boolean;
+};
+
+export const README_TARGETS: readonly ReadmeTarget[] = [
+  {
+    id: "compact-pill",
+    fileName: "compact-pill.png",
+    title: "Floating Capsule (Compact)",
+    scenario: "Idle",
+    expanded: false,
+  },
+  {
+    id: "expanded-completed",
+    fileName: "expanded-completed.png",
+    title: "Task Completed & Token Summary (Expanded)",
+    scenario: "Completed Ready",
+    expanded: true,
+  },
+  {
+    id: "expanded-thinking",
+    fileName: "expanded-thinking.png",
+    title: "Real-Time Thinking & Actions",
+    scenario: "Thinking",
+    expanded: true,
+  },
+  {
+    id: "expanded-multi",
+    fileName: "expanded-multi.png",
+    title: "Multi-Session & Sub-Agent Tracking",
+    scenario: "2 Active + 1 Completed",
+    expanded: true,
+  },
+];
+
+const MB = 1024 * 1024;
+
+function buildSystemResources(
+  name: DebugScenarioName,
+  now: number,
+): {
+  systemSnapshot: SystemResourceSnapshot;
+  cpuHistory: number[];
+} {
+  if (name === "Idle" || name === "Quota Exhausted") {
+    return {
+      systemSnapshot: {
+        app: { cpu_percent: 0.4, memory_bytes: 310 * MB },
+        tasks: { cpu_percent: 0, memory_bytes: 0 },
+        total: { cpu_percent: 0.4, memory_bytes: 310 * MB },
+        sample_time_ms: now,
+      },
+      cpuHistory: [0.4, 0.5, 0.4, 0.4, 0.3, 0.4],
+    };
+  }
+  if (
+    name === "Completed Loading" ||
+    name === "Completed Ready" ||
+    name === "Expired Completed Expanded" ||
+    name === "Interrupted" ||
+    name === "2 Completed"
+  ) {
+    return {
+      systemSnapshot: {
+        app: { cpu_percent: 0.8, memory_bytes: 320 * MB },
+        tasks: { cpu_percent: 0.4, memory_bytes: 160 * MB },
+        total: { cpu_percent: 1.2, memory_bytes: 480 * MB },
+        sample_time_ms: now,
+      },
+      cpuHistory: [1.0, 1.1, 1.0, 1.2, 1.3, 1.2],
+    };
+  }
+  if (
+    name === "2 Active Sessions" ||
+    name === "1 Active + 1 Completed" ||
+    name === "2 Active + 1 Completed" ||
+    name === "Multi Agent" ||
+    name === "Agent Permission"
+  ) {
+    return {
+      systemSnapshot: {
+        app: { cpu_percent: 1.5, memory_bytes: 350 * MB },
+        tasks: { cpu_percent: 3.3, memory_bytes: 330 * MB },
+        total: { cpu_percent: 4.8, memory_bytes: 680 * MB },
+        sample_time_ms: now,
+      },
+      cpuHistory: [3.2, 3.8, 4.1, 4.5, 4.6, 4.8],
+    };
+  }
+  return {
+    systemSnapshot: {
+      app: { cpu_percent: 1.2, memory_bytes: 340 * MB },
+      tasks: { cpu_percent: 2.3, memory_bytes: 180 * MB },
+      total: { cpu_percent: 3.5, memory_bytes: 520 * MB },
+      sample_time_ms: now,
+    },
+    cpuHistory: [2.1, 2.6, 3.1, 2.9, 3.6, 3.5],
+  };
+}
 
 export function createDebugScenario(name: DebugScenarioName, now: number): DebugScenario {
   const session = (
@@ -118,5 +227,5 @@ export function createDebugScenario(name: DebugScenarioName, now: number): Debug
             readyAt: name === "Expired Completed Expanded" ? now - 20_000 : now,
           };
   }
-  return { snapshot, usage, tokens };
+  return { snapshot, usage, tokens, ...buildSystemResources(name, now) };
 }

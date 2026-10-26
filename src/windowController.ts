@@ -116,7 +116,12 @@ export function createIslandWindowController(
           },
           current,
         );
-        if (ready) transition("ANIMATION_END");
+        if (ready) {
+          transition("ANIMATION_END");
+          if (regionWidth !== model.compact.width || regionHeight !== model.compact.height) {
+            update(model, true);
+          }
+        }
       } catch (error) {
         report("窗口收起失败", error);
         if (!current() || machine.current() !== "collapsing") return;
@@ -188,16 +193,15 @@ export function createIslandWindowController(
     if (!force && regionWidth === next.compact.width && regionHeight === next.compact.height) return;
     timer.clearTimeout(regionTimer);
     const { width, height } = next.compact;
+    const applyRegion = async () => {
+      if (machine.current() !== "compact" || nativeLarge) return;
+      if (regionWidth === width && regionHeight === height) return;
+      await setRegion(width, height);
+      regionWidth = width;
+    };
     regionTimer = timer.setTimeout(
       () => {
-        void queue
-          .run(async () => {
-            if (machine.current() !== "compact" || nativeLarge) return;
-            if (regionWidth === width && regionHeight === height) return;
-            await setRegion(width, height);
-            regionWidth = width;
-          })
-          .catch((error) => report("窗口点击区域调整失败", error));
+        void applyRegion().catch((error) => report("窗口点击区域调整失败", error));
       },
       width < regionWidth ? (model.reducedMotion ? 150 : MORPH_MS) : 0,
     );
@@ -207,6 +211,14 @@ export function createIslandWindowController(
     expand,
     collapse,
     finishCollapse,
+    refreshScale() {
+      if (!active) return Promise.resolve();
+      return queue
+        .run(async (current) => {
+          if (current() && regionWidth > 0 && regionHeight > 0) await setRegion(regionWidth, regionHeight);
+        })
+        .catch((error) => report("屏幕缩放变化后更新点击区域失败", error));
+    },
     enter() {
       pointerInside = true;
       timers.cancelLeave();

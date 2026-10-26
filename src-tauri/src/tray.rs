@@ -1,10 +1,10 @@
 use crate::{
-    app_paths, diagnostics,
+    app_paths, codex_runtime, diagnostics,
     launch::exit_after_suppress,
     settings,
     usage::{AppServer, UsageService},
 };
-use std::{io, path::Path, sync::mpsc};
+use std::{io, path::Path};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
@@ -27,7 +27,7 @@ fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         None::<&str>,
     )?;
 
-    let set_path = MenuItem::with_id(app, "set-codex-path", "Set Codex executable...", true, None::<&str>)?;
+    let set_path = MenuItem::with_id(app, "set-codex-path", "Find Codex automatically", true, None::<&str>)?;
     let reset_path = MenuItem::with_id(
         app,
         "reset-codex-path",
@@ -80,7 +80,7 @@ fn refresh_tray_menu(app: &tauri::AppHandle) {
     }
 }
 
-/// 用户在托盘菜单中选定的 Codex 程序的检测结果。
+/// 自动找到的 Codex 程序的检测结果。
 pub(crate) enum RuntimeCheck {
     /// 成功启动 app-server 并读回额度。
     Usable,
@@ -90,7 +90,7 @@ pub(crate) enum RuntimeCheck {
     Unusable(String),
 }
 
-/// 验证所选程序能否承担取数职责：完成 app-server 握手并读回额度才算可用。
+/// 验证程序能否承担取数职责：完成 app-server 握手并读回额度才算可用。
 pub(crate) fn check_codex_runtime(executable: &Path) -> RuntimeCheck {
     match AppServer::start_with(executable.to_path_buf()) {
         Err(error) => RuntimeCheck::Unusable(error),
@@ -112,43 +112,22 @@ pub(crate) fn notify(app: &tauri::AppHandle, kind: MessageDialogKind, title: &st
     }
 }
 
-/// 文件选择框只能在主线程创建，因此先注册回调，再由后台线程等待用户选择结果。
-fn choose_codex_path(app: tauri::AppHandle) {
-    let (sender, receiver) = mpsc::channel();
-    let dialog = app.dialog().file().set_title("Select Codex executable");
-    #[cfg(windows)]
-    let dialog = dialog.add_filter("Executables", &["exe"]);
-    dialog.pick_file(move |path| {
-        let _ = sender.send(path);
-    });
+/// 自动搜索不使用已保存的路径，验证通过后替换当前配置。
+fn search_codex_path(app: tauri::AppHandle) {
     std::thread::spawn(move || {
-        let selected = match receiver.recv() {
-            Ok(Some(path)) => path,
-            Ok(None) => {
-                diagnostics::log("已取消设置 Codex 程序路径", None);
-                return;
-            }
-            Err(_) => {
-                diagnostics::log("接收 Codex 程序路径选择结果失败", None);
-                return;
-            }
-        };
-        let path = match selected.into_path() {
-            Ok(path) if path.is_file() => path,
-            Ok(_) => {
-                diagnostics::log("所选 Codex 程序路径不是文件，已忽略", None);
-                return;
-            }
+        let path = match codex_runtime::find_auto_codex_runtime() {
+            Ok(path) => path,
             Err(error) => {
-                diagnostics::log("解析所选 Codex 程序路径失败", Some(&error.to_string()));
+                diagnostics::log("自动搜索 Codex 程序失败", Some(&error));
+                notify(&app, MessageDialogKind::Error, "Codex not found", error);
                 return;
             }
         };
         let check = check_codex_runtime(&path);
         if let RuntimeCheck::Unusable(error) = &check {
-            diagnostics::log("所选 Codex 程序不可用，未保存路径", Some(error));
+            diagnostics::log("自动找到的 Codex 程序不可用，未保存路径", Some(error));
             notify(&app, MessageDialogKind::Error, "Codex unavailable", format!(
-                "The selected executable could not start Codex app-server. The path was not saved.\n\n{}\n\n{error}\n\nSelect Codex CLI or the codex.exe bundled with Codex App.",
+                "The detected executable could not start Codex app-server. The path was not saved.\n\n{}\n\n{error}\n\nStart Codex App and search again, or check your Codex CLI installation.",
                 path.display()
             ));
             return;
@@ -168,7 +147,7 @@ fn choose_codex_path(app: tauri::AppHandle) {
             RuntimeCheck::Usable => notify(
                 &app,
                 MessageDialogKind::Info,
-                "Codex executable selected",
+                "Codex executable found",
                 format!("Executable verified. Now using:\n{}", path.display()),
             ),
             RuntimeCheck::LimitsFailed(error) => notify(
@@ -291,7 +270,7 @@ pub(crate) fn on_menu(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
                 );
             }
         },
-        "set-codex-path" => choose_codex_path(app.clone()),
+        "set-codex-path" => search_codex_path(app.clone()),
         "reset-codex-path" => reset_codex_path(app),
         "limit-window-5h" => select_limit_window(app, settings::LimitDisplayWindow::FiveHour),
         "limit-window-week" => select_limit_window(app, settings::LimitDisplayWindow::Week),

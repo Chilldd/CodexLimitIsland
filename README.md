@@ -73,7 +73,17 @@
 
 ---
 
-### 2. 配置 Codex Hook（推荐）
+### 2. 配置与联动（Codex 路径与 Hook）
+
+#### A. Codex app-server 执行路径（自动识别与设置）
+
+灵动岛通过 Codex 的 `app-server` 接口读取 5 小时与每周额度配额。程序具备**全自动路径探测与设置**能力：
+
+- **自动探测机制**：启动时自动检索系统环境变量 `PATH`、应用安装目录（如 `%LOCALAPPDATA%\OpenAI\Codex` 等），并能**自动识别当前正在运行的 Codex 桌面端、Store 版或便携版进程**，解析并绑定其内置的 `resources/codex.exe`，通常无需手动配置。
+- **托盘一键自动搜索与设置**：若首次启动未检测到 Codex，只需先启动运行 Codex App，然后在灵动岛系统托盘右键菜单中点击 **“Find Codex automatically”**（自动搜索 Codex 程序）。程序会自动定位运行中的 Codex 实例、完成 `app-server` 握手自检并在验证通过后持久化保存。
+- **恢复默认**：若后续环境变动，可在托盘菜单随时选择 **“Restore default detection”**（恢复默认检测）重置为开箱自动查找。
+
+#### B. 配置 Codex Hook（推荐）
 
 通过配置 Codex 命令型 Hook，灵动岛可以在后台实时感知 Codex 的运行状态、进度及 Token 消耗。
 
@@ -127,7 +137,7 @@ Windows 下路径含空格或特殊字符时，使用 PowerShell 调用运算符
   - 在 **“展示额度”** 子菜单选择 **“5 小时限额 (5h)”** 或 **“每周限额 (7d)”**，切换紧凑态显示的额度；
   - 点击 **“重置窗口位置”** 将悬浮岛恢复至主屏幕顶部居中；
   - 点击 **“配置 Codex Hook…”** 一键写入或修复 `%USERPROFILE%\.codex\hooks.json`；
-  - 找不到 Codex 时可点击 **“设置 Codex 程序路径…”** 手动指定 `codex.exe`（内置连接自检），或随时 **“恢复默认路径”**；
+  - 未识别到 Codex 时可点击 **“自动搜索 Codex 程序 (Find Codex automatically)”** 自动探测并绑定当前运行的 Codex 实例（内置握手自检），或随时选择 **“恢复默认检测 (Restore default detection)”**；
   - 点击 **“退出”** 彻底关闭悬浮岛。
 
 通过托盘退出后，Hook 不会自动重新启动灵动岛；再次手动启动程序后恢复自动唤醒。

@@ -22,11 +22,12 @@ struct Settings {
     codex_path: Option<String>,
     limit_window: Option<LimitDisplayWindow>,
     window_x: Option<i32>,
+    window_y: Option<i32>,
 }
 
 impl Settings {
     fn is_empty(&self) -> bool {
-        self.codex_path.is_none() && self.limit_window.is_none() && self.window_x.is_none()
+        self.codex_path.is_none() && self.limit_window.is_none() && self.window_x.is_none() && self.window_y.is_none()
     }
 }
 
@@ -87,16 +88,21 @@ pub fn clear_codex_path() -> Result<(), String> {
     }
 }
 
-/// 读取用户保存的窗口横坐标位置。
-pub fn configured_window_x() -> Option<i32> {
-    let path = config_path().ok()?;
-    load_at(&path).window_x
+/// 旧配置只有横坐标，新配置同时记录顶部位置以区分上下排列的屏幕。
+pub fn configured_window_position() -> (Option<i32>, Option<i32>) {
+    let Ok(path) = config_path() else {
+        return (None, None);
+    };
+    let settings = load_at(&path);
+    (settings.window_x, settings.window_y)
 }
 
-pub fn save_window_x(x: i32) -> Result<(), String> {
+#[tauri::command]
+pub fn save_window_position(x: i32, y: Option<i32>) -> Result<(), String> {
     let path = config_path()?;
     let mut settings = load_at(&path);
     settings.window_x = Some(x);
+    settings.window_y = y;
     let text = serde_json::to_string_pretty(&settings).map_err(|error| format!("序列化配置失败：{error}"))?;
     write_at(&path, &text).map_err(|error| format!("写入配置文件失败：{error}"))
 }
@@ -105,17 +111,13 @@ pub fn clear_window_x() -> Result<(), String> {
     let path = config_path()?;
     let mut settings = load_at(&path);
     settings.window_x = None;
+    settings.window_y = None;
     if settings.is_empty() {
         app_paths::clear_at(&path).map_err(|error| format!("删除配置文件失败：{error}"))
     } else {
         let text = serde_json::to_string_pretty(&settings).map_err(|error| format!("序列化配置失败：{error}"))?;
         write_at(&path, &text).map_err(|error| format!("写入配置文件失败：{error}"))
     }
-}
-
-#[tauri::command]
-pub fn save_window_position(x: i32) -> Result<(), String> {
-    save_window_x(x)
 }
 
 /// 读取用户偏好的限额展示窗口，默认为 5 小时限额。
@@ -166,6 +168,7 @@ mod tests {
             codex_path: Some(r"D:\Tools\codex.exe".into()),
             limit_window: None,
             window_x: None,
+            window_y: None,
         };
         write_at(&path, &serde_json::to_string_pretty(&settings).unwrap()).unwrap();
         assert_eq!(load_at(&path).codex_path.as_deref(), Some(r"D:\Tools\codex.exe"));
@@ -199,6 +202,7 @@ mod tests {
             codex_path: None,
             limit_window: Some(LimitDisplayWindow::Week),
             window_x: None,
+            window_y: None,
         };
         write_at(&path, &serde_json::to_string_pretty(&settings).unwrap()).unwrap();
         assert_eq!(load_at(&path).limit_window, Some(LimitDisplayWindow::Week));
@@ -212,6 +216,7 @@ mod tests {
             codex_path: Some(r"D:\Tools\codex.exe".into()),
             limit_window: Some(LimitDisplayWindow::Week),
             window_x: None,
+            window_y: None,
         };
         write_at(&path, &serde_json::to_string_pretty(&settings).unwrap()).unwrap();
 
@@ -232,16 +237,19 @@ mod tests {
             codex_path: Some(r"D:\Tools\codex.exe".into()),
             limit_window: Some(LimitDisplayWindow::FiveHour),
             window_x: Some(420),
+            window_y: Some(-1077),
         };
         write_at(&path, &serde_json::to_string_pretty(&settings).unwrap()).unwrap();
 
         let loaded = load_at(&path);
         assert_eq!(loaded.window_x, Some(420));
+        assert_eq!(loaded.window_y, Some(-1077));
         assert_eq!(loaded.codex_path.as_deref(), Some(r"D:\Tools\codex.exe"));
         assert_eq!(loaded.limit_window, Some(LimitDisplayWindow::FiveHour));
 
         // 清除 window_x 但保留其它设置时，配置文件依然存在
         settings.window_x = None;
+        settings.window_y = None;
         assert!(!settings.is_empty());
         write_at(&path, &serde_json::to_string_pretty(&settings).unwrap()).unwrap();
 

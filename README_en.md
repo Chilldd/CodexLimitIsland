@@ -73,7 +73,17 @@ Run the installer and follow the setup wizard.
 
 ---
 
-### 2. Configure Codex Hooks (Recommended)
+### 2. Configuration & Integration (Codex Path & Hooks)
+
+#### A. Codex App-Server Executable Path (Automatic Detection & Setup)
+
+Codex Limit Island reads your 5-hour and weekly quota snapshots via the Codex `app-server` interface. The application features **fully automated path detection and configuration**:
+
+- **Automatic Detection**: On startup, it inspects your system `PATH`, standard application install directories (e.g. `%LOCALAPPDATA%\OpenAI\Codex`), and **automatically discovers running Codex desktop, Store, or portable processes** to locate and bind the bundled `resources/codex.exe`. Usually, no manual setup is required.
+- **One-Click Automatic Search**: If Codex was not running during the initial launch, simply start the Codex App, right-click the island's system tray icon, and click **"Find Codex automatically"** (`自动搜索 Codex 程序`). The app will locate the running Codex process, verify connectivity with built-in `app-server` handshake diagnostics, and persist the detected path.
+- **Restore Default**: Choose **"Restore default detection"** (`恢复默认检测`) in the tray menu at any time to clear custom paths and return to automatic discovery.
+
+#### B. Configure Codex Hooks (Recommended)
 
 Configuring Codex command-style Hooks enables real-time activity status, lifecycle tracking, and Token metrics in the island.
 
@@ -127,7 +137,7 @@ Keep the handler's `type` and `timeout` fields from the full example. Escape JSO
   - Switch displayed limit in compact mode via **"Display Limit"** (`展示额度`: `5h` or `7d`);
   - Click **"Reset Window Position"** (`重置窗口位置`) to recenter the island at the top of the primary monitor;
   - Click **"Configure Codex Hook…"** (`配置 Codex Hook…`) to write or repair `%USERPROFILE%\.codex\hooks.json` in one click;
-  - Manually configure `codex.exe` path via **"Set Codex Path…"** (`设置 Codex 程序路径…`, includes built-in connectivity diagnostics), or select **"Restore Default Path"** (`恢复默认路径`) at any time;
+  - If Codex cannot be detected, click **"Find Codex automatically"** (`自动搜索 Codex 程序`) to discover and bind the running Codex instance with built-in handshake verification, or choose **"Restore default detection"** (`恢复默认检测`) at any time;
   - Choose **"Exit"** (`退出`) to completely shut down the application.
 
 Exiting via the system tray stops the island from automatically waking up on subsequent Hook events until the program is manually restarted.
