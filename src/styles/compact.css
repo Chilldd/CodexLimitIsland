@@ -44,6 +44,7 @@
 
 .compact-copy {
   left: 42px;
+  width: max-content;
   opacity: 0;
   transform: translateY(4px);
   pointer-events: none;

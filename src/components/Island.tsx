@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useLayoutEffect,
   useRef,
   type CSSProperties,
@@ -68,14 +69,40 @@ export function Island({
     if (!el) return;
     const currentKey = `${view.layout}:${view.compactLabel}:${view.compactUsage.label}:${view.compactUsage.percent}`;
     if (lastKey.current === currentKey) return;
-    lastKey.current = currentKey;
 
     const rect = el.getBoundingClientRect();
-    if (rect.width > 0) {
-      // 左内边距 13px + Orb 20px + 间距 9px = 42px；右内边距对称留白 13px
-      const target = Math.min(Math.max(Math.round(rect.width + 55), 126), 290);
+    const measuredWidth = Math.max(rect.width, el.scrollWidth);
+    if (measuredWidth > 0) {
+      lastKey.current = currentKey;
+      // 左内边距 13px + Orb 20px + 间距 9px = 42px；右内边距对称留白 18px（保证半圆角 19px 弧度内文字不贴边、不被裁切）
+      const target = Math.min(Math.max(Math.round(measuredWidth + 60), 126), 290);
       onMeasureCompactWidth(target);
     }
+  }, [view.layout, view.compactLabel, view.compactUsage.label, view.compactUsage.percent, onMeasureCompactWidth]);
+
+  useEffect(() => {
+    if (view.layout === "minimal" || !onMeasureCompactWidth) return;
+    const el = compactRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const measured = Math.max(
+          entry.contentRect.width,
+          entry.target.getBoundingClientRect().width,
+          (entry.target as HTMLElement).scrollWidth || 0,
+        );
+        if (measured > 0) {
+          const currentKey = `${view.layout}:${view.compactLabel}:${view.compactUsage.label}:${view.compactUsage.percent}`;
+          lastKey.current = currentKey;
+          const target = Math.min(Math.max(Math.round(measured + 60), 126), 290);
+          onMeasureCompactWidth(target);
+        }
+      }
+    });
+
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [view.layout, view.compactLabel, view.compactUsage.label, view.compactUsage.percent, onMeasureCompactWidth]);
 
   return (

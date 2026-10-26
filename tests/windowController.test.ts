@@ -4,6 +4,19 @@ import { reduceInteraction, type IslandInteractionState } from "../src/islandInt
 import { deferred, flush, nativeFixture } from "./fixtures";
 
 beforeEach(() => vi.useFakeTimers());
+
+test("DPI changes reapply the logical hit region without resizing or changing interaction", async () => {
+  const f = fixture();
+  await vi.advanceTimersByTimeAsync(1);
+  f.native.setHitRegion.mockClear();
+  await f.controller.refreshScale();
+  expect(f.native.setHitRegion).toHaveBeenCalledExactlyOnceWith(100, 40);
+  expect(f.native.setSize).not.toHaveBeenCalled();
+  expect(f.machine.current()).toBe("compact");
+  f.controller.dispose();
+  await f.controller.refreshScale();
+  expect(f.native.setHitRegion).toHaveBeenCalledTimes(1);
+});
 function fixture() {
   const native = nativeFixture();
   let phase: IslandInteractionState = "compact";

@@ -20,6 +20,7 @@
 - Windows PowerShell 使用 `npm.cmd`。前端验证：`npm.cmd run build`；Rust 验证：`cargo test --lib --quiet --manifest-path src-tauri/Cargo.toml`。
 - Node.js 24.15 以上的 24 系列或 Node.js 26 以上环境使用 `npm.cmd ci` 安装锁定依赖，统一质量检查执行 `npm.cmd run check`。格式化使用 `npm.cmd run format` 与 `cargo fmt --manifest-path src-tauri/Cargo.toml`；不要将格式化与业务逻辑修改混为同一步骤。
 - 版本需保持 npm、Cargo 与 Tauri 编译上下文一致；运行 `npm.cmd run version:check` 和 Rust 单测验证。ESLint 要求 0 warning，不新增告警豁免；Vitest 运行 TypeScript 测试，测试类型由 `tsconfig.test.json` 检查。
+- UI 预览与视觉验收统一复用 `src/debugPresentation.ts` 的 20 个标准场景与 `src/components/PreviewGallery.tsx`（仅 DEV 加载：单实例交互用 `?debugIsland`，全形态平铺用 `?preview=matrix`，README 靶向渲染用 `?preview=readme`），始终渲染真实 `<Island />` 组件而非另建静态 HTML 页面。修改样式或布局后运行 `npm.cmd run preview:matrix` 生成 `artifacts.local/island-matrix.png` 核对全部 20 个场景的胶囊态与展开态；改动影响文档外观时运行 `npm.cmd run preview:readme`（或 `npm.cmd run preview:capture` 一次生成两者）同步更新 `docs/images/*.png`。
 - 安装包构建：`npm.cmd run tauri build`；安装包输出在 `src-tauri/target/release/bundle/nsis`。构建成功只能证明产物生成；真实 Hook 流程还需要 Codex 已信任命令、重启后发送消息，并检查本地 HTTP 响应与界面状态。
 - 运行中的 `src-tauri/target/release/codexlimit.exe` 可能占用构建产物。重建前只停止路径精确匹配的本项目进程，完成后避免同时运行多个实例。
 

@@ -19,7 +19,7 @@ import {
 } from "../src/domain/metrics";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { DEBUG_SCENARIOS, createDebugScenario } from "../src/debugPresentation";
+import { DEBUG_SCENARIOS, README_TARGETS, createDebugScenario } from "../src/debugPresentation";
 
 test("row titles, tooltip fallback, agents and result metadata are derived without interaction state", () => {
   const session = {
@@ -179,9 +179,16 @@ test("CSS tokens, visible size, native hit regions and Tauri/Rust bounds stay al
   expect(rust).toContain(`(100.0..=${WINDOW_WIDTH}.0)`);
   expect(rust).toContain(`(40.0..=${EXPANDED_MAX_HEIGHT + ROOT_PADDING * 2}.0)`);
   expect(rust).toContain(`height == ${DEBUG_HEIGHT}.0`);
+
+  const compactCss = readFileSync(resolve("src/styles/compact.css"), "utf8");
+  expect(compactCss).toMatch(/\.compact-copy\s*\{[^}]*width:\s*max-content/);
 });
 test("all 20 debug scenarios provide typed rows and consistent headline/ARIA contracts", () => {
   expect(DEBUG_SCENARIOS).toHaveLength(20);
+  expect(README_TARGETS).toHaveLength(4);
+  for (const target of README_TARGETS) {
+    expect(DEBUG_SCENARIOS).toContain(target.scenario);
+  }
   for (const name of DEBUG_SCENARIOS) {
     const scene = createDebugScenario(name, 20_000);
     const view = deriveIslandPresentation(
@@ -194,5 +201,7 @@ test("all 20 debug scenarios provide typed rows and consistent headline/ARIA con
     expect(new Set(view.rows.map((row) => row.sessionId)).size).toBe(view.rows.length);
     expect(view.ariaLabel).toBeTruthy();
     expect(view.headline.subtitle).toBe(view.expandedSubtitle);
+    expect(scene.systemSnapshot.total.memory_bytes).toBeGreaterThan(0);
+    expect(scene.cpuHistory.length).toBeGreaterThanOrEqual(2);
   }
 });

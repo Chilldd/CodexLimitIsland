@@ -1,14 +1,15 @@
 import { createPositionWriter } from "../positionWriter";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { WINDOW_WIDTH } from "../domain/metrics";
-import type { IslandNativeWindow } from "../nativeWindow";
+import type { IslandNativeWindow, ScreenMonitor } from "../nativeWindow";
 
 type Drag = {
   pointerId: number;
   startX: number;
-  windowX: number;
-  minX: number;
-  maxX: number;
+  startScreenX: number;
+  offsetX: number;
+  monitors: ScreenMonitor[];
+  monitor: ScreenMonitor;
   scale: number;
   moved: boolean;
 };
@@ -26,6 +27,8 @@ export function useHorizontalDrag(native: IslandNativeWindow, isCompact: () => b
     target: null as number | null,
     current: null as number | null,
     top: 0,
+    reading: null as Promise<void> | null,
+    sampleRequested: false,
     suppress: false,
     clickTimer: undefined as number | undefined,
     mounted: true,
@@ -38,6 +41,7 @@ export function useHorizontalDrag(native: IslandNativeWindow, isCompact: () => b
       current.mounted = false;
       writer.dispose();
       current.pending = null;
+      current.drag = null;
       window.cancelAnimationFrame(current.frame ?? 0);
       window.clearTimeout(current.clickTimer);
     };
@@ -60,17 +64,20 @@ export function useHorizontalDrag(native: IslandNativeWindow, isCompact: () => b
     current.pending = event.pointerId;
     element.setPointerCapture(event.pointerId);
     window.cancelAnimationFrame(current.frame ?? 0);
+    current.target = null;
+    current.drag = null;
     try {
-      const { position, monitor, scale } = await native.placement();
+      const { position, monitor, monitors, cursor, scale } = await native.placement();
       if (!current.mounted || !monitor || current.pending !== event.pointerId) return;
       current.top = position.y;
       current.current = position.x;
       current.drag = {
         pointerId: event.pointerId,
-        startX: event.screenX,
-        windowX: position.x,
-        minX: monitor.position.x,
-        maxX: monitor.position.x + monitor.size.width - Math.round(WINDOW_WIDTH * scale),
+        startX: cursor.x,
+        startScreenX: event.screenX,
+        offsetX: (cursor.x - position.x) / scale,
+        monitors,
+        monitor,
         scale,
         moved: false,
       };
@@ -78,28 +85,74 @@ export function useHorizontalDrag(native: IslandNativeWindow, isCompact: () => b
       console.error("窗口拖动准备失败", error);
     }
   }
+  function samplePointer(): Promise<void> {
+    const current = state.current;
+    current.sampleRequested = true;
+    if (current.reading) return current.reading;
+    const reading = (async () => {
+      while (current.mounted && current.drag && current.sampleRequested) {
+        current.sampleRequested = false;
+        const drag = current.drag;
+        // 使用原生物理坐标，避免跨不同 DPI 屏幕时 screenX 的逻辑坐标跳变。
+        const cursor = await native.cursorPosition();
+        if (!current.mounted || current.drag !== drag) continue;
+        if (!drag.moved && Math.abs(cursor.x - drag.startX) < 5 * drag.scale) continue;
+        drag.moved = true;
+        current.suppress = true;
+        const monitor =
+          drag.monitors.find(
+            (screen) =>
+              cursor.x >= screen.position.x &&
+              cursor.x < screen.position.x + screen.size.width &&
+              cursor.y >= screen.position.y &&
+              cursor.y < screen.position.y + screen.size.height,
+          ) ?? drag.monitor;
+        const maxX = Math.max(
+          monitor.position.x,
+          monitor.position.x + monitor.size.width - Math.round(WINDOW_WIDTH * monitor.scaleFactor),
+        );
+        current.target = Math.round(
+          Math.max(monitor.position.x, Math.min(maxX, cursor.x - drag.offsetX * monitor.scaleFactor)),
+        );
+        current.top = monitor.position.y + Math.round(3 * monitor.scaleFactor);
+        if (monitor.position.x !== drag.monitor.position.x || monitor.position.y !== drag.monitor.position.y) {
+          current.current = current.target;
+        }
+        drag.monitor = monitor;
+        window.cancelAnimationFrame(current.frame ?? 0);
+        current.frame = window.requestAnimationFrame(animate);
+      }
+    })()
+      .catch((error: unknown) => console.error("读取拖动鼠标位置失败", error))
+      .finally(() => {
+        current.reading = null;
+      });
+    current.reading = reading;
+    return reading;
+  }
   function onPointerMove(event: PointerEvent<HTMLElement>) {
     const current = state.current;
-    const drag = current.drag;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    const delta = (event.screenX - drag.startX) * drag.scale;
-    if (!drag.moved && Math.abs(delta) < 5 * drag.scale) return;
-    drag.moved = true;
-    current.suppress = true;
-    current.target = Math.max(drag.minX, Math.min(drag.maxX, drag.windowX + delta));
-    if (current.current == null) current.current = drag.windowX;
-    window.cancelAnimationFrame(current.frame ?? 0);
-    current.frame = window.requestAnimationFrame(animate);
+    if (!current.drag || current.pending !== event.pointerId) return Promise.resolve();
+    if (Math.abs(event.screenX - current.drag.startScreenX) >= 5) current.suppress = true;
+    return samplePointer();
   }
-  function onPointerUp(event: PointerEvent<HTMLElement>) {
+  async function onPointerUp(event: PointerEvent<HTMLElement>) {
     const current = state.current;
     if (current.pending !== event.pointerId) return;
     current.pending = null;
-    if (current.drag?.moved && current.target != null) {
-      void native.savePosition?.(Math.round(current.target)).catch((error) => console.error("窗口位置保存失败", error));
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    const drag = current.drag;
+    await samplePointer();
+    if (!current.mounted || current.drag !== drag) return;
+    if (drag?.moved && current.target != null) {
+      window.cancelAnimationFrame(current.frame ?? 0);
+      current.current = current.target;
+      writer.move(current.target, current.top);
+      void native
+        .savePosition?.(current.target, current.top)
+        .catch((error) => console.error("窗口位置保存失败", error));
     }
     current.drag = null;
-    event.currentTarget.releasePointerCapture(event.pointerId);
     current.clickTimer = window.setTimeout(() => {
       current.suppress = false;
     }, 0);

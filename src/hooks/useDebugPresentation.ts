@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
 import type { DebugScenario, DebugScenarioName } from "../debugPresentation";
 
+export type PreviewMode = "matrix" | "readme";
+
+export function getPreviewMode(): PreviewMode | null {
+  if (!import.meta.env.DEV) return null;
+  const params = new URLSearchParams(location.search);
+  const preview = params.get("preview");
+  if (preview === "readme") return "readme";
+  if (preview !== null) return "matrix";
+  return null;
+}
+
 export const debugEnabled = import.meta.env.DEV && new URLSearchParams(location.search).has("debugIsland");
 export function useDebugPresentation() {
   const [names, setNames] = useState<readonly DebugScenarioName[]>([]);

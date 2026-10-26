@@ -17,7 +17,10 @@
     "check:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --locked --manifest-path src-tauri/Cargo.toml --lib --quiet",
     "check": "npm run version:check && npm run format:check && npm run lint && npm run build && npm test && npm run check:rust",
     "contracts:generate": "node scripts/generate-contracts.ts",
-    "contracts:check": "node scripts/generate-contracts.ts --check"
+    "contracts:check": "node scripts/generate-contracts.ts --check",
+    "preview:capture": "node scripts/capture-previews.ts",
+    "preview:readme": "node scripts/capture-previews.ts --readme",
+    "preview:matrix": "node scripts/capture-previews.ts --matrix"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
